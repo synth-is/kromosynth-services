@@ -29,18 +29,23 @@ services:
       retries: 3
       start_period: 40s
 
-  # The render server (depends on evoruns)
+  # The render server (depends on evoruns) - using PM2 clustering
   kromosynth-render:
     build:
       context: https://github.com/synth-is/kromosynth-render.git
       dockerfile: Dockerfile
+      args:
+        - USE_PM2=true
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
-      # Configure the render server to use the evoruns service name instead of localhost
+      # Configure the render server to use the evoruns service name
       - EVORUNS_SERVER_URL=http://kromosynth-evoruns:3004
+      # PM2 clustering settings
+      - USE_PM2=true
+      - PM2_INSTANCES=max
     depends_on:
       kromosynth-evoruns:
         condition: service_healthy
