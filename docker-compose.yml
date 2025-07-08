@@ -33,14 +33,12 @@ services:
   kromosynth-render:
     build:
       context: https://github.com/synth-is/kromosynth-render.git
-      dockerfile: render-socket/Dockerfile.flexible
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
-      # Use the parallel version of the server for better performance
-      - SERVER_IMPLEMENTATION=socket-server-pcm-parallel.js
       # Configure the render server to use the evoruns service name instead of localhost
       - EVORUNS_SERVER_URL=http://kromosynth-evoruns:3004
     depends_on:
