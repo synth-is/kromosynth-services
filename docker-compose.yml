@@ -17,8 +17,8 @@ services:
       - EVORUN_ROOT_DIR=/data/evoruns
       - EVORENDERS_ROOT_DIR=/data/evorenders
     volumes:
-      - /Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/evoruns:/data/evoruns:ro
-      - /Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/evorenders:/data/evorenders:ro
+      - ${EVORUNS_HOST_DIR:-./evoruns}:/data/evoruns:ro
+      - ${EVORENDERS_HOST_DIR:-./evorenders}:/data/evorenders:ro
     restart: unless-stopped
     networks:
       - kromosynth-network
