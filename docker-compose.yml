@@ -1,0 +1,59 @@
+version: '3.8'
+
+# Main orchestration for kromosynth services
+# This compose file references both GitHub repositories
+
+services:
+  # The evoruns browser server (dependency)
+  kromosynth-evoruns:
+    build:
+      context: https://github.com/synth-is/kromosynth-evoruns.git
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - NODE_ENV=production
+      - EVORUN_ROOT_DIR=/data/evoruns
+      - EVORENDERS_ROOT_DIR=/data/evorenders
+    volumes:
+      - /Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/evoruns:/data/evoruns:ro
+      - /Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/evorenders:/data/evorenders:ro
+    restart: unless-stopped
+    networks:
+      - kromosynth-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # The render server (depends on evoruns)
+  kromosynth-render:
+    build:
+      context: https://github.com/synth-is/kromosynth-render.git
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # Configure the render server to use the evoruns service name instead of localhost
+      - EVORUNS_SERVER_URL=http://kromosynth-evoruns:3004
+    depends_on:
+      kromosynth-evoruns:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - kromosynth-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  kromosynth-network:
+    driver: bridge

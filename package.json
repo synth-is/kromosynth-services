@@ -1,0 +1,32 @@
+{
+  "name": "kromosynth-services",
+  "version": "1.0.0",
+  "description": "Docker Compose orchestration for kromosynth microservices",
+  "scripts": {
+    "start": "./start.sh prod",
+    "dev": "./start.sh dev",
+    "start:detached": "./start.sh prod -d",
+    "dev:detached": "./start.sh dev -d",
+    "stop": "docker compose down",
+    "logs": "docker compose logs -f",
+    "logs:evoruns": "docker compose logs -f kromosynth-evoruns",
+    "logs:render": "docker compose logs -f kromosynth-render",
+    "ps": "docker compose ps",
+    "clean": "docker compose down -v --remove-orphans"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/synth-is/kromosynth-services.git"
+  },
+  "keywords": [
+    "kromosynth",
+    "docker",
+    "microservices",
+    "orchestration"
+  ],
+  "author": "Björn Þór Jónsson <bangsi@bthj.is>",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
