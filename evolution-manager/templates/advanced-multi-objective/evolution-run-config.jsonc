@@ -1,0 +1,44 @@
+{
+  // Advanced evolution run configuration
+  "outputDir": "./output", // Will be overridden by service
+  "evolutionaryRunId": "advanced-multi-objective-run",
+  "audioSynthesisSettings": {
+    "sampleRate": 48000,
+    "duration": 3.0,
+    "numberOfChannels": 2,
+    "bitDepth": 24
+  },
+  "qualityDiversitySettings": {
+    "mapElitesGridSize": [20, 20, 10],
+    "behaviorDimensions": [
+      "spectralCentroid",
+      "spectralRolloff", 
+      "harmonicRatio"
+    ],
+    "fitnessFunction": "multiObjective",
+    "diversityMeasure": "euclideanDistance"
+  },
+  "renderingSettings": {
+    "renderAudio": true,
+    "renderImages": true,
+    "renderAnalysis": true,
+    "compressionFormat": "flac",
+    "imageFormat": "png",
+    "generateThumbnails": true
+  },
+  "databaseSettings": {
+    "useKuzuDB": true,
+    "useSQLite": true,
+    "saveGenomes": true,
+    "saveMetrics": true,
+    "saveAudioFeatures": true,
+    "saveGenealogy": true,
+    "batchSize": 50
+  },
+  "analysisSettings": {
+    "generateStatistics": true,
+    "trackConvergence": true,
+    "saveProgressReports": true,
+    "reportInterval": 10
+  }
+}

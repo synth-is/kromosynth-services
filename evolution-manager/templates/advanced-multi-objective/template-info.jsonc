@@ -1,0 +1,12 @@
+{
+  "name": "Advanced Multi-Objective",
+  "description": "Advanced quality diversity search with multiple behavioral dimensions and higher resolution grid",
+  "version": "1.0.0",
+  "author": "Kromosynth Team",
+  "tags": ["advanced", "multi-objective", "high-resolution"],
+  "estimatedRunTime": "2-4 hours",
+  "resourceRequirements": {
+    "memory": "4-6GB",
+    "cpu": "High"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  // Advanced evolution runs configuration template
+  "baseEvolutionRunConfigFile": "./evolution-run-config.jsonc",
+  "baseEvolutionaryHyperparametersFile": "./evolutionary-hyperparameters.jsonc",
+  "evoRuns": [
+    {
+      "label": "advanced_multi_objective_run",
+      // Service will populate iterations dynamically
+      "iterations": []
+    }
+  ],
+  "currentEvolutionRunIndex": 0,
+  "currentEvolutionRunIteration": 0
+}

@@ -1,0 +1,29 @@
+{
+  // Basic evolution run configuration
+  "outputDir": "./output", // Will be overridden by service
+  "evolutionaryRunId": "basic-qd-run",
+  "audioSynthesisSettings": {
+    "sampleRate": 44100,
+    "duration": 2.0,
+    "numberOfChannels": 2
+  },
+  "qualityDiversitySettings": {
+    "mapElitesGridSize": [10, 10],
+    "behaviorDimensions": [
+      "spectralCentroid",
+      "spectralRolloff"
+    ],
+    "fitnessFunction": "composite"
+  },
+  "renderingSettings": {
+    "renderAudio": true,
+    "renderImages": false,
+    "compressionFormat": "wav"
+  },
+  "databaseSettings": {
+    "useKuzuDB": true,
+    "useSQLite": true,
+    "saveGenomes": true,
+    "saveMetrics": true
+  }
+}

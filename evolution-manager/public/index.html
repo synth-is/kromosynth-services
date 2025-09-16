@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kromosynth Evolution Manager - Test Client</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #1a1a1a; 
+            color: #fff; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+        }
+        .section { 
+            margin: 20px 0; 
+            padding: 20px; 
+            background: #2a2a2a; 
+            border-radius: 8px; 
+        }
+        .controls { 
+            margin: 10px 0; 
+        }
+        button { 
+            padding: 10px 15px; 
+            margin: 5px; 
+            background: #4a9eff; 
+            border: none; 
+            border-radius: 4px; 
+            color: white; 
+            cursor: pointer; 
+        }
+        button:hover { 
+            background: #357abd; 
+        }
+        #logs { 
+            height: 300px; 
+            overflow-y: auto; 
+            background: #000; 
+            padding: 10px; 
+            border-radius: 4px; 
+            font-family: monospace; 
+            white-space: pre-wrap; 
+        }
+        .run-item { 
+            padding: 10px; 
+            margin: 5px 0; 
+            background: #3a3a3a; 
+            border-radius: 4px; 
+        }
+        .status-running { background-color: #2d5a2d; }
+        .status-completed { background-color: #2d4a2d; }  
+        .status-failed { background-color: #5a2d2d; }
+        .status-stopped { background-color: #4a4a2d; }
+        input, select { 
+            padding: 8px; 
+            margin: 5px; 
+            background: #3a3a3a; 
+            border: 1px solid #555; 
+            border-radius: 4px; 
+            color: white; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧬 Kromosynth Evolution Manager</h1>
+        
+        <div class="section">
+            <h2>Connection Status</h2>
+            <div id="connectionStatus">Disconnected</div>
+            <div class="controls">
+                <button onclick="connect()">Connect</button>
+                <button onclick="disconnect()">Disconnect</button>
+                <button onclick="refreshRuns()">Refresh Runs</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Start New Run</h2>
+            <div class="controls">
+                <select id="templateSelect">
+                    <option value="">Select Template...</option>
+                </select>
+                <input type="number" id="maxGenerations" placeholder="Max Generations (optional)" min="1" max="10000">
+                <input type="number" id="populationSize" placeholder="Population Size (optional)" min="10" max="1000">
+                <button onclick="startRun()">Start Run</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Active Runs</h2>
+            <div id="runsList"></div>
+        </div>
+
+        <div class="section">
+            <h2>System Logs</h2>
+            <div class="controls">
+                <button onclick="clearLogs()">Clear Logs</button>
+            </div>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket = null;
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.textContent += `[${timestamp}] ${message}\\n`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function connect() {
+            if (socket) {
+                socket.disconnect();
+            }
+
+            socket = io();
+            
+            socket.on('connect', () => {
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').style.color = '#4a9eff';
+                log('Connected to evolution manager');
+                loadTemplates();
+                refreshRuns();
+            });
+
+            socket.on('disconnect', () => {
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').style.color = '#ff4a4a';
+                log('Disconnected from evolution manager');
+            });
+
+            socket.on('runs-status', (data) => {
+                updateRunsList(data.runs);
+            });
+
+            socket.on('run-progress', (data) => {
+                log(`Run ${data.runId} - Generation ${data.progress.generation}/${data.progress.totalGenerations}`);
+                if (data.progress.bestFitness) {
+                    log(`Run ${data.runId} - Best fitness: ${data.progress.bestFitness}`);
+                }
+            });
+
+            socket.on('run-log', (data) => {
+                log(`[${data.runId}] ${data.message.trim()}`);
+            });
+
+            socket.on('run-started', (data) => {
+                log(`Started new run: ${data.runId} with template ${data.templateName}`);
+                refreshRuns();
+            });
+
+            socket.on('run-stopped', (data) => {
+                log(`Stopped run: ${data.runId}`);
+                refreshRuns();
+            });
+
+            socket.on('error', (data) => {
+                log(`Error: ${data.message}`);
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+
+        async function loadTemplates() {
+            try {
+                const response = await fetch('/api/templates');
+                const data = await response.json();
+                const select = document.getElementById('templateSelect');
+                select.innerHTML = '<option value="">Select Template...</option>';
+                
+                data.templates.forEach(template => {
+                    const option = document.createElement('option');
+                    option.value = template.templateName;
+                    option.textContent = `${template.name} (${template.templateName})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                log(`Failed to load templates: ${error.message}`);
+            }
+        }
+
+        function refreshRuns() {
+            if (socket && socket.connected) {
+                socket.emit('get-runs-status');
+            }
+        }
+
+        function updateRunsList(runs) {
+            const runsList = document.getElementById('runsList');
+            runsList.innerHTML = '';
+
+            if (runs.length === 0) {
+                runsList.innerHTML = '<p>No runs found</p>';
+                return;
+            }
+
+            runs.forEach(run => {
+                const runDiv = document.createElement('div');
+                runDiv.className = `run-item status-${run.status}`;
+                
+                runDiv.innerHTML = `
+                    <div>
+                        <strong>${run.id}</strong> 
+                        <span style="float: right;">${run.status.toUpperCase()}</span>
+                    </div>
+                    <div>Template: ${run.templateName}</div>
+                    <div>Progress: ${run.progress.generation}/${run.progress.totalGenerations} generations</div>
+                    ${run.progress.bestFitness ? `<div>Best Fitness: ${run.progress.bestFitness}</div>` : ''}
+                    ${run.cpu ? `<div>CPU: ${run.cpu}% | Memory: ${Math.round(run.memory / 1024 / 1024)}MB</div>` : ''}
+                    <div style="margin-top: 10px;">
+                        <button onclick="subscribeToRun('${run.id}')">Subscribe</button>
+                        <button onclick="stopRun('${run.id}')" ${run.status !== 'running' ? 'disabled' : ''}>Stop</button>
+                    </div>
+                `;
+                
+                runsList.appendChild(runDiv);
+            });
+        }
+
+        async function startRun() {
+            const templateName = document.getElementById('templateSelect').value;
+            if (!templateName) {
+                alert('Please select a template');
+                return;
+            }
+
+            const options = {};
+            const maxGenerations = document.getElementById('maxGenerations').value;
+            const populationSize = document.getElementById('populationSize').value;
+            
+            if (maxGenerations) options.maxGenerations = parseInt(maxGenerations);
+            if (populationSize) options.populationSize = parseInt(populationSize);
+
+            try {
+                const response = await fetch('/api/runs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ templateName, options })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`Started run: ${data.runId}`);
+                } else {
+                    const error = await response.json();
+                    log(`Failed to start run: ${error.message}`);
+                }
+            } catch (error) {
+                log(`Failed to start run: ${error.message}`);
+            }
+        }
+
+        async function stopRun(runId) {
+            try {
+                const response = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    log(`Stopped run: ${runId}`);
+                } else {
+                    const error = await response.json();
+                    log(`Failed to stop run: ${error.message}`);
+                }
+            } catch (error) {
+                log(`Failed to stop run: ${error.message}`);
+            }
+        }
+
+        function subscribeToRun(runId) {
+            if (socket && socket.connected) {
+                socket.emit('subscribe-to-run', { runId });
+                log(`Subscribed to run: ${runId}`);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').textContent = '';
+        }
+
+        // Auto-connect on page load
+        window.onload = () => {
+            connect();
+        };
+    </script>
+</body>
+</html>

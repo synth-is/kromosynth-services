@@ -1,0 +1,63 @@
+{
+  // Advanced evolutionary algorithm hyperparameters
+  "populationSize": 200,
+  "maxGenerations": 1000,
+  "mutationRate": 0.03,
+  "crossoverRate": 0.9,
+  "elitismRate": 0.15,
+  
+  // Quality Diversity specific parameters with higher resolution
+  "mapElitesSettings": {
+    "gridResolution": [20, 20, 10],
+    "behaviorDescriptors": [
+      {
+        "name": "spectralCentroid",
+        "range": [0, 8000],
+        "bins": 20
+      },
+      {
+        "name": "spectralRolloff", 
+        "range": [1000, 12000],
+        "bins": 20
+      },
+      {
+        "name": "harmonicRatio",
+        "range": [0, 1],
+        "bins": 10
+      }
+    ]
+  },
+  
+  // More sophisticated genome mutation settings
+  "genomeMutationSettings": {
+    "addNodeProbability": 0.015,
+    "removeNodeProbability": 0.008,
+    "addConnectionProbability": 0.025,
+    "removeConnectionProbability": 0.015,
+    "mutateWeightProbability": 0.9,
+    "mutateParameterProbability": 0.7,
+    "mutateTopologyProbability": 0.1
+  },
+  
+  // Advanced selection strategies
+  "selectionStrategy": "roulette",
+  "tournamentSize": 5,
+  "replacementStrategy": "mapElites",
+  "diversityPressure": 0.3,
+  
+  // Extended termination criteria
+  "terminationCriteria": {
+    "maxGenerations": 1000,
+    "maxEvaluations": 200000,
+    "targetFitness": null,
+    "stagnationGenerations": 200,
+    "minimumDiversity": 0.1
+  },
+  
+  // Multi-objective optimization settings
+  "multiObjectiveSettings": {
+    "objectives": ["quality", "novelty", "diversity"],
+    "objectiveWeights": [0.5, 0.3, 0.2],
+    "paretoFrontSize": 50
+  }
+}

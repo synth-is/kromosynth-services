@@ -1,0 +1,12 @@
+{
+  "name": "Basic Quality Diversity",
+  "description": "A basic quality diversity search configuration suitable for general sound exploration",
+  "version": "1.0.0",
+  "author": "Kromosynth Team",
+  "tags": ["basic", "quality-diversity", "default"],
+  "estimatedRunTime": "30-60 minutes",
+  "resourceRequirements": {
+    "memory": "1-2GB",
+    "cpu": "Medium"
+  }
+}

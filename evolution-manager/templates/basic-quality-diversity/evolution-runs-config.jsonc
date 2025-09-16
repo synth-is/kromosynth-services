@@ -1,0 +1,15 @@
+{
+  // Template evolution runs configuration
+  // The service will override these paths with working directory paths
+  "baseEvolutionRunConfigFile": "./evolution-run-config.jsonc",
+  "baseEvolutionaryHyperparametersFile": "./evolutionary-hyperparameters.jsonc",
+  "evoRuns": [
+    {
+      "label": "basic_quality_diversity_run",
+      // Service will populate iterations dynamically
+      "iterations": []
+    }
+  ],
+  "currentEvolutionRunIndex": 0,
+  "currentEvolutionRunIteration": 0
+}

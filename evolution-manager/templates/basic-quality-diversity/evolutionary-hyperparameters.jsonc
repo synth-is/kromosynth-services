@@ -1,0 +1,48 @@
+{
+  // Evolutionary algorithm hyperparameters
+  "populationSize": 100,
+  "maxGenerations": 500,
+  "mutationRate": 0.05,
+  "crossoverRate": 0.8,
+  "elitismRate": 0.1,
+  
+  // Quality Diversity specific parameters  
+  "mapElitesSettings": {
+    "gridResolution": [10, 10],
+    "behaviorDescriptors": [
+      {
+        "name": "spectralCentroid",
+        "range": [0, 8000],
+        "bins": 10
+      },
+      {
+        "name": "spectralRolloff", 
+        "range": [1000, 12000],
+        "bins": 10
+      }
+    ]
+  },
+  
+  // Genome mutation settings
+  "genomeMutationSettings": {
+    "addNodeProbability": 0.02,
+    "removeNodeProbability": 0.01,
+    "addConnectionProbability": 0.03,
+    "removeConnectionProbability": 0.02,
+    "mutateWeightProbability": 0.8,
+    "mutateParameterProbability": 0.6
+  },
+  
+  // Selection and replacement strategies
+  "selectionStrategy": "tournament",
+  "tournamentSize": 3,
+  "replacementStrategy": "mapElites",
+  
+  // Termination criteria
+  "terminationCriteria": {
+    "maxGenerations": 500,
+    "maxEvaluations": 50000,
+    "targetFitness": null,
+    "stagnationGenerations": 100
+  }
+}
