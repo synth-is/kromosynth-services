@@ -1,0 +1,20 @@
+{
+  "name": "Evoconf_single Map_x100_noosc_kuzudb",
+  "description": "Generated from CLI config: evoConf_single-map_x100_noOsc_kuzudb",
+  "version": "1.0.0",
+  "author": "Generated from CLI config",
+  "tags": [
+    "generated",
+    "cli-import",
+    "evoConf_single-map_x100_noOsc_kuzudb"
+  ],
+  "estimatedRunTime": "30-60 minutes",
+  "resourceRequirements": {
+    "memory": "1-2GB",
+    "cpu": "Medium"
+  },
+  "originalConfig": {
+    "label": "evoConf_single-map_x100_noOsc_kuzudb",
+    "generatedAt": "2025-09-18T10:33:24.053Z"
+  }
+}

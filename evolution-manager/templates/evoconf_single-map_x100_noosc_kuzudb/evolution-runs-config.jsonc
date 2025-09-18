@@ -1,0 +1,13 @@
+{
+  "// Note": "This template file is generated automatically",
+  "baseEvolutionRunConfigFile": "./evolution-run-config.jsonc",
+  "baseEvolutionaryHyperparametersFile": "./evolutionary-hyperparameters.jsonc",
+  "evoRuns": [
+    {
+      "label": "evoconf_single-map_x100_noosc_kuzudb_run",
+      "iterations": []
+    }
+  ],
+  "currentEvolutionRunIndex": 0,
+  "currentEvolutionRunIteration": 0
+}

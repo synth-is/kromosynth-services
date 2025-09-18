@@ -1,0 +1,102 @@
+{
+  "algorithm": "mapElites_with_uBC",
+  "evoRunsGroup": "generalTestEvoruns",
+  "seedEvals": 64,
+  "eliteWinsOnlyOneCell": false,
+  "classRestriction": null,
+  "batchSize": 64,
+  "maxNumberOfParents": 1,
+  "terminationCondition": {
+    "qdScoreGradientThreshold": 0.01
+  },
+  "gradientWindowSize": 10,
+  "scoreProportionalToNumberOfEvalsTerminationCondition": false,
+  "populationSize": 20,
+  "gridDepth": 50,
+  "evoRunsDirPath": "/Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/evoruns/",
+  "favoritesDirPath": "/Users/bjornpjo/iCloud/Documents/synth.is/favoriteGenomes",
+  "geneEvaluationProtocol": "websocket",
+  "childProcessBatchSize": 1,
+  "evaluationCandidateWavFilesDirPath": null,
+  "probabilityMutatingWaveNetwork": 0.5,
+  "probabilityMutatingPatch": 0.5,
+  "oneCPPNPerFrequency": false,
+  "classScoringDurations": [
+    4
+  ],
+  "classScoringNoteDeltas": [
+    0
+  ],
+  "classScoringVelocities": [
+    1
+  ],
+  "antiAliasing": true,
+  "frequencyUpdatesApplyToAllPathcNetworkOutputs": false,
+  "classScoringVariationsAsContainerDimensions": false,
+  "classifiers": [
+    {
+      "classConfigurations": [
+        {
+          "refSetName": "customRef1",
+          "featureExtractionEndpoint": "/vggish",
+          "featureExtractionType": "vggish",
+          "qualityEvaluationEndpoint": "/cosine?reference_embedding_path=/Users/bjornpjo/Downloads/nsynth-valid/family-split_features/string/string_acoustic_057-070-127.json&reference_embedding_key=vggish",
+          "qualityFromFeatures": true,
+          "usingQueryEmbeddings": false,
+          "projectionEndpoint": "/umap",
+          "sampleRate": 16000
+        }
+      ],
+      "classificationDimensions": [
+        100,
+        100
+      ]
+    }
+  ],
+  "classesAsMaps": true,
+  "mapSwitchingCondition": {
+    "switchEveryNGenerations": 10,
+    "coverageWithoutIncreaseGenerations": 10,
+    "qdScoreWithoutIncreaseGenerations": 10,
+    "coverageGradientThreshold": 0.6,
+    "qdScoreGradientThreshold": 0.01,
+    "gradientWindowSize": 10
+  },
+  "classifierIndex": 0,
+  "ckptDir": "/Users/bjornpjo/.cache/torch/hub/checkpoints",
+  "yamnetModelUrl": "file:///Users/bjornpjo/Developer/vendor/tfjs-model_yamnet_tfjs_1/model.json",
+  "measureCollectivePerformance": false,
+  "useGpuForTensorflow": true,
+  "renderSampleRateForClassifier": 16000,
+  "commitEliteMapToGitEveryNIterations": 1,
+  "addGenomesToGit": false,
+  "prunePastEliteGenomesEveryNGenerations": null,
+  "renderEliteMapToWavFilesEveryNGenerations": 500,
+  "renderElitesToWavFiles": true,
+  "evoRendersDirPath": "/Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/evorenders/",
+  "processingUtilisation": null,
+  "geneVariationServers": [
+    "ws://127.0.0.1:50051",
+    "ws://127.0.0.1:50052",
+    "ws://127.0.0.1:50053"
+  ],
+  "geneRenderingServers": [
+    "ws://127.0.0.1:60051",
+    "ws://127.0.0.1:60052",
+    "ws://127.0.0.1:60053"
+  ],
+  "geneEvaluationServers": [],
+  "evaluationFeatureServers": [
+    "ws://127.0.0.1:61051",
+    "ws://127.0.0.1:61052",
+    "ws://127.0.0.1:61053"
+  ],
+  "evaluationQualityServers": [
+    "ws://127.0.0.1:32051",
+    "ws://127.0.0.1:32052",
+    "ws://127.0.0.1:32053"
+  ],
+  "evaluationProjectionServers": [
+    "ws://127.0.0.1:33051"
+  ]
+}

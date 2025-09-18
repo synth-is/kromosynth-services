@@ -13,6 +13,9 @@ export class EvolutionManager {
     this.configManager = new ConfigManager();
     this.isConnected = false;
     
+    // Configure CLI script path - can be overridden via environment variable
+    this.cliScriptPath = this.getCliScriptPath();
+    
     // PM2 promisified methods
     this.pm2Connect = promisify(PM2.connect.bind(PM2));
     this.pm2Start = promisify(PM2.start.bind(PM2));
@@ -25,8 +28,62 @@ export class EvolutionManager {
     this.init();
   }
 
+  /**
+   * Get and validate CLI script path
+   */
+  getCliScriptPath() {
+    // Priority order:
+    // 1. Environment variable KROMOSYNTH_CLI_PATH
+    // 2. Environment variable KROMOSYNTH_CLI_SCRIPT (full path to script)
+    // 3. Default relative path
+    
+    let scriptPath;
+    
+    if (process.env.KROMOSYNTH_CLI_SCRIPT) {
+      // Full path to script provided
+      scriptPath = process.env.KROMOSYNTH_CLI_SCRIPT;
+    } else if (process.env.KROMOSYNTH_CLI_PATH) {
+      // Path to CLI directory provided
+      scriptPath = path.join(process.env.KROMOSYNTH_CLI_PATH, 'cli-app', 'kromosynth.js');
+    } else {
+      // Default: assume kromosynth-cli is a sibling directory to kromosynth-services
+      scriptPath = path.resolve(process.cwd(), '../../kromosynth-cli/cli-app/kromosynth.js');
+    }
+    
+    console.log(`📍 CLI Script Path: ${scriptPath}`);
+    return scriptPath;
+  }
+
+  /**
+   * Validate that the CLI script exists
+   */
+  async validateCliScript() {
+    const exists = await fs.pathExists(this.cliScriptPath);
+    if (!exists) {
+      const suggestions = [
+        'Set KROMOSYNTH_CLI_SCRIPT environment variable to full path of kromosynth.js',
+        'Set KROMOSYNTH_CLI_PATH environment variable to kromosynth-cli directory',
+        'Ensure kromosynth-cli is in the expected location relative to this service'
+      ];
+      
+      throw new Error(
+        `CLI script not found at: ${this.cliScriptPath}\n\n` +
+        'Possible solutions:\n' +
+        suggestions.map(s => `  • ${s}`).join('\n') + '\n\n' +
+        'Examples:\n' +
+        '  export KROMOSYNTH_CLI_SCRIPT="/path/to/kromosynth-cli/cli-app/kromosynth.js"\n' +
+        '  export KROMOSYNTH_CLI_PATH="/path/to/kromosynth-cli"'
+      );
+    }
+    
+    console.log('✅ CLI script found and accessible');
+  }
+
   async init() {
     try {
+      // Validate CLI script path first
+      await this.validateCliScript();
+      
       await this.pm2Connect();
       this.isConnected = true;
       console.log('✅ Connected to PM2');
@@ -79,13 +136,13 @@ export class EvolutionManager {
       // Create PM2 process configuration
       const pm2Config = {
         name: `kromosynth-${runId}`,
-        script: path.join(process.cwd(), '../kromosynth-cli/cli-app/kromosynth.js'),
+        script: this.cliScriptPath,
         args: [
           'evolution-runs',
           '--evolution-runs-config-json-file',
           workingConfig.configFilePath
         ],
-        cwd: path.join(process.cwd(), '../kromosynth-cli/cli-app'),
+        cwd: path.dirname(this.cliScriptPath),
         env: {
           NODE_ENV: 'production',
           EVOLUTION_RUN_ID: runId

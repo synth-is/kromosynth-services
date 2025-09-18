@@ -2,9 +2,13 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import { EvolutionManager } from './core/evolution-manager.js';
 import { setupApiRoutes } from './api/routes.js';
 import { setupWebSocket } from './websocket/socket-handler.js';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const server = createServer(app);
