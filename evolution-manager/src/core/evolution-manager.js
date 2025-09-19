@@ -5,12 +5,14 @@ import fs from 'fs-extra';
 import { parse as parseJSONC } from 'jsonc-parser';
 import { ulid } from 'ulid';
 import { ConfigManager } from '../config/config-manager.js';
+import { ServiceDependencyManager } from './service-dependency-manager.js';
 
 export class EvolutionManager {
   constructor() {
     this.pm2 = null;
     this.runs = new Map(); // runId -> run metadata
     this.configManager = new ConfigManager();
+    this.serviceDependencyManager = new ServiceDependencyManager();
     this.isConnected = false;
     
     // Configure CLI script path - can be overridden via environment variable
@@ -129,13 +131,57 @@ export class EvolutionManager {
     const timestamp = new Date().toISOString();
     
     try {
+      console.log(`🧬 Starting evolution run ${runId} with template ${templateName}`);
+      
       // Load and prepare configuration
       const config = await this.configManager.loadTemplate(templateName);
+      
+      // Extract ecosystem variant from options (default to 'default')
+      const ecosystemVariant = options.ecosystemVariant || 'default';
+      
+      // Step 1: Start service dependencies
+      console.log(`🔧 Starting service dependencies for run ${runId}...`);
+      let serviceInfo;
+      try {
+        serviceInfo = await this.serviceDependencyManager.startServicesForRun(
+          runId, 
+          templateName, 
+          ecosystemVariant
+        );
+        console.log(`✅ Service dependencies started for run ${runId}`);
+      } catch (error) {
+        console.error(`❌ Failed to start service dependencies for run ${runId}:`, error);
+        // If no services are needed, continue without them
+        if (error.message.includes('No ecosystem template found')) {
+          console.log(`ℹ️ No service dependencies found for ${templateName}, continuing without services`);
+          serviceInfo = null;
+        } else {
+          throw error;
+        }
+      }
+      
+      // Step 2: Prepare working configuration with service endpoints
       const workingConfig = await this.configManager.prepareRunConfig(config, runId, options);
       
-      // Create PM2 process configuration
+      // Update evolution config with service endpoints if services were started
+      if (serviceInfo) {
+        const updatedEvolutionConfig = this.serviceDependencyManager.updateEvolutionConfigWithServices(
+          config.evolutionRunConfig,
+          serviceInfo
+        );
+        
+        // Write updated evolution config
+        await fs.writeFile(
+          workingConfig.evolutionRunConfigPath,
+          JSON.stringify(updatedEvolutionConfig, null, 2)
+        );
+        
+        console.log(`🔗 Updated evolution config with service endpoints for run ${runId}`);
+      }
+      
+      // Step 3: Create PM2 process configuration for evolution run
       const pm2Config = {
-        name: `kromosynth-${runId}`,
+        name: `kromosynth-evolution-${runId}`,
         script: this.cliScriptPath,
         args: [
           'evolution-runs',
@@ -155,22 +201,30 @@ export class EvolutionManager {
         max_memory_restart: '2G'
       };
 
-      // Start the process with PM2
+      // Step 4: Start the evolution process with PM2
+      console.log(`🚀 Starting evolution process for run ${runId}...`);
       await this.pm2Start(pm2Config);
       
-      // Store run metadata
+      // Step 5: Store run metadata
       const runData = {
         id: runId,
         templateName,
-        status: 'starting',
+        ecosystemVariant,
+        status: 'running',
         startedAt: timestamp,
         pm2Name: pm2Config.name,
         configPath: workingConfig.configFilePath,
         outputDir: workingConfig.outputDir,
         options,
+        serviceInfo: serviceInfo ? {
+          portAllocation: serviceInfo.portAllocation,
+          serviceUrls: serviceInfo.serviceUrls,
+          services: serviceInfo.services.map(s => ({ name: s.name, status: s.status }))
+        } : null,
         progress: {
           generation: 0,
-          totalGenerations: config.maxGenerations || 1000,
+          totalGenerations: config.hyperparameters?.maxGenerations || 
+                            config.hyperparameters?.terminationCriteria?.maxGenerations || 1000,
           bestFitness: null,
           coverage: null
         }
@@ -178,11 +232,22 @@ export class EvolutionManager {
       
       this.runs.set(runId, runData);
       
-      console.log(`🚀 Started evolution run ${runId} with template ${templateName}`);
+      console.log(`✅ Evolution run ${runId} started successfully`);
+      console.log(`📊 Services: ${serviceInfo ? serviceInfo.services.length + ' dependencies' : 'none'}`);
+      console.log(`🎯 Template: ${templateName} (variant: ${ecosystemVariant})`);
+      
       return runId;
       
     } catch (error) {
-      console.error(`❌ Failed to start evolution run:`, error);
+      console.error(`❌ Failed to start evolution run ${runId}:`, error);
+      
+      // Cleanup on failure
+      try {
+        await this.stopRun(runId);
+      } catch (cleanupError) {
+        console.error(`❌ Failed to cleanup after failed start:`, cleanupError);
+      }
+      
       throw error;
     }
   }
@@ -198,13 +263,32 @@ export class EvolutionManager {
     }
 
     try {
-      await this.pm2Stop(run.pm2Name);
-      await this.pm2Delete(run.pm2Name);
+      console.log(`🛑 Stopping evolution run ${runId}...`);
       
+      // Step 1: Stop the evolution process
+      if (run.pm2Name) {
+        try {
+          await this.pm2Stop(run.pm2Name);
+          await this.pm2Delete(run.pm2Name);
+          console.log(`✅ Stopped evolution process for run ${runId}`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to stop evolution process for run ${runId}:`, error.message);
+        }
+      }
+      
+      // Step 2: Stop service dependencies
+      try {
+        await this.serviceDependencyManager.stopServicesForRun(runId);
+        console.log(`✅ Stopped service dependencies for run ${runId}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to stop service dependencies for run ${runId}:`, error.message);
+      }
+      
+      // Step 3: Update run metadata
       run.status = 'stopped';
       run.stoppedAt = new Date().toISOString();
       
-      console.log(`🛑 Stopped evolution run ${runId}`);
+      console.log(`✅ Evolution run ${runId} stopped successfully`);
       
     } catch (error) {
       console.error(`❌ Failed to stop evolution run ${runId}:`, error);
@@ -349,11 +433,14 @@ export class EvolutionManager {
    * Shutdown the evolution manager
    */
   async shutdown() {
+    console.log('🛑 Shutting down evolution manager...');
+    
     if (this.isConnected) {
       // Stop all running evolution processes
       const runs = Array.from(this.runs.values());
       const runningRuns = runs.filter(run => run.status === 'running');
       
+      console.log(`🛑 Stopping ${runningRuns.length} active evolution runs...`);
       for (const run of runningRuns) {
         try {
           await this.stopRun(run.id);
@@ -362,9 +449,14 @@ export class EvolutionManager {
         }
       }
       
+      // Cleanup all service dependencies
+      await this.serviceDependencyManager.cleanup();
+      
       this.pm2Disconnect();
       this.isConnected = false;
       console.log('✅ Disconnected from PM2');
     }
+    
+    console.log('✅ Evolution manager shutdown complete');
   }
 }

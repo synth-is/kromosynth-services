@@ -72,12 +72,86 @@ export class ConfigManager {
       }
     }
 
+    // Check for ecosystem configurations
+    const ecosystemConfigs = await this.findEcosystemConfigs(templateName);
+
     return {
       ...metadata,
       templateName,
       availableFiles,
-      isComplete: requiredFiles.every(file => availableFiles.includes(file))
+      isComplete: requiredFiles.every(file => availableFiles.includes(file)),
+      ecosystemConfigs
     };
+  }
+
+  /**
+   * Find available ecosystem configurations for a template
+   */
+  async findEcosystemConfigs(templateName) {
+    const configs = [];
+    const templateDir = path.join(this.templatesDir, templateName);
+    
+    // Look in template directory
+    if (await fs.pathExists(templateDir)) {
+      const files = await fs.readdir(templateDir);
+      for (const file of files) {
+        if (file.startsWith('ecosystem') && file.endsWith('.config.js')) {
+          const variant = this.parseEcosystemVariant(file);
+          configs.push({
+            variant,
+            path: path.join(templateDir, file),
+            source: 'template'
+          });
+        }
+      }
+    }
+    
+    // Look in CLI directory for template-specific ecosystem configs
+    const cliDir = path.dirname(process.env.KROMOSYNTH_CLI_SCRIPT || '');
+    if (await fs.pathExists(cliDir)) {
+      try {
+        const files = await fs.readdir(path.join(cliDir, '..'));
+        for (const file of files) {
+          if (file.includes(templateName) && file.startsWith('ecosystem') && file.endsWith('.config.js')) {
+            const variant = this.parseEcosystemVariant(file, templateName);
+            configs.push({
+              variant,
+              path: path.join(cliDir, '..', file),
+              source: 'cli'
+            });
+          }
+        }
+      } catch (error) {
+        // CLI directory might not exist or be accessible
+      }
+    }
+    
+    return configs;
+  }
+
+  /**
+   * Parse ecosystem variant from filename
+   */
+  parseEcosystemVariant(filename, templateName = '') {
+    // ecosystem_variant.config.js -> variant
+    // ecosystem_templateName_variant.config.js -> variant
+    const baseName = filename.replace('.config.js', '');
+    const parts = baseName.split('_');
+    
+    if (parts.length === 2 && parts[0] === 'ecosystem') {
+      return parts[1]; // ecosystem_variant.config.js
+    }
+    
+    if (parts.length >= 3 && parts[0] === 'ecosystem') {
+      if (templateName && parts.includes(templateName)) {
+        // Find variant after template name
+        const templateIndex = parts.indexOf(templateName);
+        return parts.slice(templateIndex + 1).join('_') || 'default';
+      }
+      return parts.slice(1).join('_'); // Join remaining parts
+    }
+    
+    return 'default';
   }
 
   /**

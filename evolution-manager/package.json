@@ -10,6 +10,7 @@
     "setup": "bash scripts/setup.sh",
     "create-template": "node scripts/create-template-from-config.js",
     "list-configs": "node scripts/list-importable-configs.js",
+    "test-services": "node scripts/test-services.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

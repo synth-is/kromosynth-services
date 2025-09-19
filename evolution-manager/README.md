@@ -9,6 +9,9 @@ A service for managing and monitoring kromosynth evolutionary runs via PM2 with 
 - **WebSocket Support**: Real-time progress updates and logs
 - **Template System**: JSONC-based configuration templates
 - **Process Monitoring**: CPU, memory, and progress tracking
+- **Service Dependencies**: Automatic management of QD service dependencies
+- **Dynamic Port Allocation**: Unique port ranges for concurrent runs
+- **Ecosystem Variants**: Support for different service configurations (2D/3D, etc.)
 
 ## Installation
 

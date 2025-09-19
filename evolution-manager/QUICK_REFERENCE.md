@@ -46,6 +46,7 @@ npm run setup
 | Examples | `bash scripts/examples.sh` | Interactive examples and help |
 | Start Service | `npm start` | Run the evolution manager service |
 | Dev Mode | `npm run dev` | Start with auto-reload for development |
+| Test Services | `npm run test-services` | Test service dependency system |
 
 ## 🔧 Script Parameters
 
@@ -65,14 +66,67 @@ npm run list-configs [base-path]
 
 - **base-path**: Directory to scan for configs (default: kromosynth-cli/conf)
 
-## 📊 What Gets Created
+## 🔄 Service Dependency Management
+
+### Starting Runs with Service Dependencies
+
+```bash
+# Basic run (uses default ecosystem)
+curl -X POST http://localhost:3005/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{"templateName": "evoconf_single-map_x100_noosc_kuzudb"}'
+
+# Run with 3D ecosystem variant
+curl -X POST http://localhost:3005/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "templateName": "evoconf_single-map_x100_noosc_kuzudb",
+    "ecosystemVariant": "3d"
+  }'
+```
+
+### Monitoring Services
+
+```bash
+# Check all service runs
+curl http://localhost:3005/api/services
+
+# Check services for specific run  
+curl http://localhost:3005/api/runs/{runId}/services
+
+# System status including service counts
+curl http://localhost:3005/api/status
+```
+
+### Service Lifecycle
+
+```
+🚀 Start Run
+    ↓
+🔌 Allocate Unique Port Range (50000-50999)
+    ↓
+🔧 Load Ecosystem Config (default/3d/minimal)
+    ↓
+📋 Start Service Dependencies via PM2
+    ↓
+🔗 Update Evolution Config with Service URLs
+    ↓
+🧬 Start Evolution Process
+    ↓
+✅ Run Active with All Dependencies
+```
+
+## 📊 Template Structure
 
 ```
 templates/your-template-name/
 ├── template-info.jsonc           # 📝 Metadata & resource requirements
 ├── evolution-run-config.jsonc    # ⚙️  Run configuration (merged)
 ├── evolutionary-hyperparameters.jsonc # 🧬 Algorithm parameters (merged)
-└── evolution-runs-config.jsonc   # 🔗 Template wrapper
+├── evolution-runs-config.jsonc   # 🔗 Template wrapper
+├── ecosystem_default.config.js   # 🔧 Default service dependencies
+├── ecosystem_3d.config.js        # 🔧 3D variant services
+└── ecosystem_minimal.config.js   # 🔧 Minimal services for testing
 ```
 
 ## 🔄 Configuration Merging Process
@@ -117,38 +171,74 @@ Before running scripts:
 
 ## 🎯 Common Use Cases
 
-### Import Single Configuration
+### Basic Quality Diversity Run
 ```bash
-npm run create-template \\
-  /Users/bjornpjo/Developer/apps/kromosynth-cli/cli-app/conf/my-config.jsonc \\
-  my-template
+# Start with default 2D MAP-Elites
+curl -X POST http://localhost:3005/api/runs \
+  -d '{"templateName": "evoconf_single-map_x100_noosc_kuzudb"}'
 ```
 
-### Import Multiple Configurations
+### 3D Quality Diversity Run
 ```bash
-# List all configs first
-npm run list-configs
-
-# Import each one with specific names
-npm run create-template config1.jsonc template-basic
-npm run create-template config2.jsonc template-advanced  
+# Start with 3D MAP-Elites projection
+curl -X POST http://localhost:3005/api/runs \
+  -d '{
+    "templateName": "evoconf_single-map_x100_noosc_kuzudb",
+    "ecosystemVariant": "3d",
+    "options": {
+      "maxGenerations": 1000,
+      "populationSize": 100
+    }
+  }'
 ```
 
-### Import Specific Run from Multi-Run Config
+### Concurrent Multiple Runs
 ```bash
-# See available runs
-npm run list-configs
-
-# Import run at index 1
-npm run create-template multi-run-config.jsonc template-run1 1
-```
-
-### Batch Import
-```bash
-for config in /path/to/configs/*.jsonc; do
-  name=$(basename "$config" .jsonc)
-  npm run create-template "$config" "$name"
+# Start multiple runs - each gets unique port ranges automatically
+for i in {1..3}; do
+  curl -X POST http://localhost:3005/api/runs \
+    -d "{\"templateName\": \"evoconf_single-map_x100_noosc_kuzudb\", \"ecosystemVariant\": \"default\"}"
 done
 ```
 
-This creates a seamless bridge between your existing CLI-based evolutionary runs and the new web-based management service! 🌉
+### Import and Use CLI Configuration
+```bash
+# Import existing CLI config as template
+npm run create-template \
+  /path/to/evolution-runs-config.jsonc \
+  my-custom-template
+
+# Use the new template
+curl -X POST http://localhost:3005/api/runs \
+  -d '{"templateName": "my-custom-template"}'
+```
+
+## 🚪 Troubleshooting
+
+| Issue | Quick Fix |
+|-------|----------|
+| "No ecosystem template found" | Add `ecosystem_default.config.js` to template dir or CLI will run without services |
+| "Services did not become ready" | Check service logs in `./logs/` and verify service paths in ecosystem config |
+| "Port allocation failed" | Stop old runs: `curl -X DELETE http://localhost:3005/api/runs/{runId}` |
+| "CLI script not found" | Set `KROMOSYNTH_CLI_SCRIPT` env var or run `npm run setup` |
+| "PM2 connection failed" | Install PM2: `npm install -g pm2` and restart service |
+| Run stuck "starting" | Check evolution logs: `tail -f logs/{runId}.combined.log` |
+| Services show "failed" | Verify service dependencies and interpreters in ecosystem config |
+
+### Quick Debug Commands
+```bash
+# Check system status
+curl http://localhost:3005/api/status
+
+# View service details for run
+curl http://localhost:3005/api/runs/{runId}/services
+
+# Check PM2 processes
+pm2 list
+
+# View service logs
+pm2 logs kromosynth-gRPC-variation_{runId}
+
+# Test service dependency system
+npm run test-services
+```

@@ -85,6 +85,9 @@
                 <select id="templateSelect">
                     <option value="">Select Template...</option>
                 </select>
+                <select id="ecosystemSelect">
+                    <option value="">Ecosystem Variant (optional)</option>
+                </select>
                 <input type="number" id="maxGenerations" placeholder="Max Generations (optional)" min="1" max="10000">
                 <input type="number" id="populationSize" placeholder="Population Size (optional)" min="10" max="1000">
                 <button onclick="startRun()">Start Run</button>
@@ -178,15 +181,35 @@
             try {
                 const response = await fetch('/api/templates');
                 const data = await response.json();
-                const select = document.getElementById('templateSelect');
-                select.innerHTML = '<option value="">Select Template...</option>';
+                const templateSelect = document.getElementById('templateSelect');
+                const ecosystemSelect = document.getElementById('ecosystemSelect');
+                
+                templateSelect.innerHTML = '<option value="">Select Template...</option>';
+                ecosystemSelect.innerHTML = '<option value="">Ecosystem Variant (optional)</option>';
                 
                 data.templates.forEach(template => {
                     const option = document.createElement('option');
                     option.value = template.templateName;
                     option.textContent = `${template.name} (${template.templateName})`;
-                    select.appendChild(option);
+                    option.dataset.ecosystems = JSON.stringify(template.ecosystemConfigs || []);
+                    templateSelect.appendChild(option);
                 });
+                
+                // Add event listener to update ecosystem options when template changes
+                templateSelect.addEventListener('change', function() {
+                    const selectedOption = this.options[this.selectedIndex];
+                    const ecosystems = selectedOption.dataset.ecosystems ? JSON.parse(selectedOption.dataset.ecosystems) : [];
+                    
+                    ecosystemSelect.innerHTML = '<option value="">Ecosystem Variant (optional)</option>';
+                    
+                    ecosystems.forEach(ecosystem => {
+                        const option = document.createElement('option');
+                        option.value = ecosystem.variant;
+                        option.textContent = `${ecosystem.variant} (${ecosystem.source})`;
+                        ecosystemSelect.appendChild(option);
+                    });
+                });
+                
             } catch (error) {
                 log(`Failed to load templates: ${error.message}`);
             }
@@ -211,17 +234,32 @@
                 const runDiv = document.createElement('div');
                 runDiv.className = `run-item status-${run.status}`;
                 
+                // Build service info display
+                let serviceInfo = '';
+                if (run.serviceInfo && run.serviceInfo.services) {
+                    const serviceCount = run.serviceInfo.services.length;
+                    const serviceStatus = run.serviceInfo.services.map(s => s.status).join(', ');
+                    serviceInfo = `<div>Services: ${serviceCount} (${serviceStatus})</div>`;
+                    
+                    if (run.serviceInfo.portAllocation) {
+                        const portRange = `${run.serviceInfo.portAllocation.rangeStart}-${run.serviceInfo.portAllocation.rangeEnd}`;
+                        serviceInfo += `<div>Port Range: ${portRange}</div>`;
+                    }
+                }
+                
                 runDiv.innerHTML = `
                     <div>
                         <strong>${run.id}</strong> 
                         <span style="float: right;">${run.status.toUpperCase()}</span>
                     </div>
-                    <div>Template: ${run.templateName}</div>
+                    <div>Template: ${run.templateName}${run.ecosystemVariant ? ' (' + run.ecosystemVariant + ')' : ''}</div>
                     <div>Progress: ${run.progress.generation}/${run.progress.totalGenerations} generations</div>
                     ${run.progress.bestFitness ? `<div>Best Fitness: ${run.progress.bestFitness}</div>` : ''}
                     ${run.cpu ? `<div>CPU: ${run.cpu}% | Memory: ${Math.round(run.memory / 1024 / 1024)}MB</div>` : ''}
+                    ${serviceInfo}
                     <div style="margin-top: 10px;">
                         <button onclick="subscribeToRun('${run.id}')">Subscribe</button>
+                        <button onclick="viewServices('${run.id}')">View Services</button>
                         <button onclick="stopRun('${run.id}')" ${run.status !== 'running' ? 'disabled' : ''}>Stop</button>
                     </div>
                 `;
@@ -237,6 +275,7 @@
                 return;
             }
 
+            const ecosystemVariant = document.getElementById('ecosystemSelect').value;
             const options = {};
             const maxGenerations = document.getElementById('maxGenerations').value;
             const populationSize = document.getElementById('populationSize').value;
@@ -244,16 +283,21 @@
             if (maxGenerations) options.maxGenerations = parseInt(maxGenerations);
             if (populationSize) options.populationSize = parseInt(populationSize);
 
+            const requestBody = { templateName, options };
+            if (ecosystemVariant) {
+                requestBody.ecosystemVariant = ecosystemVariant;
+            }
+
             try {
                 const response = await fetch('/api/runs', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ templateName, options })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 if (response.ok) {
                     const data = await response.json();
-                    log(`Started run: ${data.runId}`);
+                    log(`Started run: ${data.runId} (${data.templateName}${data.ecosystemVariant ? ':' + data.ecosystemVariant : ''})`);
                 } else {
                     const error = await response.json();
                     log(`Failed to start run: ${error.message}`);
@@ -281,6 +325,39 @@
             if (socket && socket.connected) {
                 socket.emit('subscribe-to-run', { runId });
                 log(`Subscribed to run: ${runId}`);
+            }
+        }
+
+        async function viewServices(runId) {
+            try {
+                const response = await fetch(`/api/runs/${runId}/services`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const serviceInfo = data.serviceInfo;
+                    
+                    let serviceDetails = `Services for run ${runId}:\n\n`;
+                    serviceDetails += `Port Range: ${serviceInfo.portAllocation.rangeStart}-${serviceInfo.portAllocation.rangeEnd}\n\n`;
+                    
+                    serviceDetails += 'Service Endpoints:\n';
+                    Object.entries(serviceInfo.serviceUrls).forEach(([serviceName, urls]) => {
+                        if (urls.length > 0) {
+                            serviceDetails += `${serviceName}:\n`;
+                            urls.forEach(url => serviceDetails += `  ${url}\n`);
+                        }
+                    });
+                    
+                    serviceDetails += '\nService Processes:\n';
+                    serviceInfo.services.forEach(service => {
+                        serviceDetails += `${service.name}: ${service.status}\n`;
+                    });
+                    
+                    alert(serviceDetails);
+                } else {
+                    const error = await response.json();
+                    log(`Failed to get service info: ${error.message}`);
+                }
+            } catch (error) {
+                log(`Failed to get service info: ${error.message}`);
             }
         }
 

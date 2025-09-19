@@ -63,7 +63,7 @@ export function setupApiRoutes(app, evolutionManager, io) {
   // Start new evolution run
   router.post('/runs', async (req, res) => {
     try {
-      const { templateName, options = {} } = req.body;
+      const { templateName, ecosystemVariant, options = {} } = req.body;
       
       if (!templateName) {
         return res.status(400).json({ 
@@ -71,16 +71,24 @@ export function setupApiRoutes(app, evolutionManager, io) {
         });
       }
 
+      // Add ecosystem variant to options if specified
+      if (ecosystemVariant) {
+        options.ecosystemVariant = ecosystemVariant;
+      }
+
       const runId = await evolutionManager.startRun(templateName, options);
       
       // Emit websocket event
-      io.emit('run-started', { runId, templateName, options });
+      io.emit('run-started', { runId, templateName, ecosystemVariant, options });
       
       res.status(201).json({ 
         runId, 
+        templateName,
+        ecosystemVariant: ecosystemVariant || 'default',
         message: 'Evolution run started successfully' 
       });
     } catch (error) {
+      console.error('Error starting evolution run:', error);
       res.status(500).json({ 
         error: 'Failed to start evolution run', 
         message: error.message 
@@ -147,14 +155,19 @@ export function setupApiRoutes(app, evolutionManager, io) {
       const completedRuns = runs.filter(run => run.status === 'completed');
       const failedRuns = runs.filter(run => run.status === 'failed');
       
+      // Get service dependency status
+      const serviceRuns = evolutionManager.serviceDependencyManager.getAllServiceRuns();
+      const totalServices = serviceRuns.reduce((count, run) => count + run.services.length, 0);
+      
       res.json({
         timestamp: new Date().toISOString(),
         totalRuns: runs.length,
         runningRuns: runningRuns.length,
         completedRuns: completedRuns.length,
         failedRuns: failedRuns.length,
+        serviceRuns: serviceRuns.length,
+        totalServices: totalServices,
         systemLoad: {
-          // Add system monitoring if needed
           uptime: process.uptime(),
           memory: process.memoryUsage()
         }
@@ -162,6 +175,37 @@ export function setupApiRoutes(app, evolutionManager, io) {
     } catch (error) {
       res.status(500).json({ 
         error: 'Failed to get system status', 
+        message: error.message 
+      });
+    }
+  });
+
+  // Get service status for all runs
+  router.get('/services', async (req, res) => {
+    try {
+      const serviceRuns = evolutionManager.serviceDependencyManager.getAllServiceRuns();
+      res.json({ serviceRuns });
+    } catch (error) {
+      res.status(500).json({ 
+        error: 'Failed to get service status', 
+        message: error.message 
+      });
+    }
+  });
+
+  // Get service status for specific run
+  router.get('/runs/:runId/services', async (req, res) => {
+    try {
+      const serviceInfo = evolutionManager.serviceDependencyManager.getServiceInfo(req.params.runId);
+      if (!serviceInfo) {
+        return res.status(404).json({ 
+          error: 'No services found for this run' 
+        });
+      }
+      res.json({ serviceInfo });
+    } catch (error) {
+      res.status(500).json({ 
+        error: 'Failed to get service info', 
         message: error.message 
       });
     }
