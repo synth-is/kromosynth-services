@@ -20,10 +20,36 @@ export function setupApiRoutes(app, evolutionManager, io) {
       const templates = await evolutionManager.getTemplates();
       res.json({ templates });
     } catch (error) {
-      res.status(500).json({ 
-        error: 'Failed to get templates', 
-        message: error.message 
+      res.status(500).json({
+        error: 'Failed to get templates',
+        message: error.message
       });
+    }
+  });
+
+  // Get specific template with full configuration
+  router.get('/templates/:templateName', async (req, res) => {
+    try {
+      const template = await evolutionManager.getTemplate(req.params.templateName);
+      if (!template) {
+        return res.status(404).json({
+          error: 'Template not found',
+          message: `Template '${req.params.templateName}' does not exist`
+        });
+      }
+      res.json({ template });
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        res.status(404).json({
+          error: 'Template not found',
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          error: 'Failed to get template',
+          message: error.message
+        });
+      }
     }
   });
 

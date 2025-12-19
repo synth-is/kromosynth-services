@@ -364,6 +364,13 @@ export class EvolutionManager {
   }
 
   /**
+   * Get a specific template with full configuration
+   */
+  async getTemplate(templateName) {
+    return await this.configManager.loadTemplate(templateName);
+  }
+
+  /**
    * Handle messages from PM2 processes
    */
   handleProcessMessage(packet) {
