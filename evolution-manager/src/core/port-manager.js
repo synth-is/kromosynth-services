@@ -8,20 +8,28 @@ export class PortManager {
     
     // Base port ranges for different services
     this.servicePortBases = {
-      geneVariation: 50000,      // 50051, 50052, 50053, etc.
-      geneRendering: 60000,      // 60051, 60052, 60053, etc.
-      evaluationFeatures: 61000, // 61051, 61052, 61053, etc.
-      evaluationQuality: 32000,  // 32051, 32052, 32053, etc.
-      evaluationProjection: 33000, // 33051, etc.
+      geneVariation: 50000,          // 50051, 50052, 50053
+      geneRendering: 60000,          // 60051, 60052, 60053
+      evaluationFeatures: 61000,     // 61051, 61052, 61053
+      evaluationQuality: 32000,      // 32051, 32052, 32053
+      evaluationProjection: 33000,   // 33051
+      clapFeatures: 32000,           // 32051, 32052, 32053 (CLAP feature extraction)
+      qdhfProjection: 33000,         // 33053 (QDHF projection)
+      qualityMusicality: 32050,      // 32060 (quality musicality evaluation)
+      pyribs: 34000,                 // 34052 (CMA-MAE pyribs)
     };
-    
+
     // Number of instances per service type
     this.serviceInstances = {
       geneVariation: 3,
-      geneRendering: 3, 
+      geneRendering: 3,
       evaluationFeatures: 3,
       evaluationQuality: 3,
       evaluationProjection: 1,
+      clapFeatures: 3,
+      qdhfProjection: 1,
+      qualityMusicality: 1,
+      pyribs: 1,
     };
     
     // Port range size per run (enough space for all services)
@@ -151,13 +159,29 @@ export class PortManager {
       throw new Error(`No port allocation found for run ${runId}`);
     }
 
-    return {
-      geneVariationServers: allocation.services.geneVariation.map(port => `ws://127.0.0.1:${port}`),
-      geneRenderingServers: allocation.services.geneRendering.map(port => `ws://127.0.0.1:${port}`),
+    const urls = {
+      geneVariationServers: allocation.services.geneVariation?.map(port => `ws://127.0.0.1:${port}`) || [],
+      geneRenderingServers: allocation.services.geneRendering?.map(port => `ws://127.0.0.1:${port}`) || [],
       geneEvaluationServers: [], // Empty as shown in config
-      evaluationFeatureServers: allocation.services.evaluationFeatures.map(port => `ws://127.0.0.1:${port}`),
-      evaluationQualityServers: allocation.services.evaluationQuality.map(port => `ws://127.0.0.1:${port}`),
-      evaluationProjectionServers: allocation.services.evaluationProjection.map(port => `ws://127.0.0.1:${port}`)
+      evaluationFeatureServers: allocation.services.evaluationFeatures?.map(port => `ws://127.0.0.1:${port}`) || [],
+      evaluationQualityServers: allocation.services.evaluationQuality?.map(port => `ws://127.0.0.1:${port}`) || [],
+      evaluationProjectionServers: allocation.services.evaluationProjection?.map(port => `ws://127.0.0.1:${port}`) || [],
     };
+
+    // CMA-MAE specific service URLs
+    if (allocation.services.clapFeatures) {
+      urls.evaluationFeatureServers = allocation.services.clapFeatures.map(port => `ws://127.0.0.1:${port}`);
+    }
+    if (allocation.services.qdhfProjection) {
+      urls.evaluationProjectionServers = allocation.services.qdhfProjection.map(port => `ws://127.0.0.1:${port}`);
+    }
+    if (allocation.services.qualityMusicality) {
+      urls.evaluationQualityServers = allocation.services.qualityMusicality.map(port => `ws://127.0.0.1:${port}`);
+    }
+    if (allocation.services.pyribs) {
+      urls.pyribsEndpoint = `http://127.0.0.1:${allocation.services.pyribs[0]}`;
+    }
+
+    return urls;
   }
 }

@@ -148,6 +148,39 @@ export function setupApiRoutes(app, evolutionManager, io) {
     }
   });
 
+  // Resume a stopped/failed evolution run
+  router.post('/runs/:runId/resume', async (req, res) => {
+    try {
+      const runId = await evolutionManager.resumeRun(req.params.runId);
+
+      // Emit websocket event
+      io.emit('run-started', { runId, resumed: true });
+
+      res.json({
+        runId,
+        message: 'Evolution run resumed successfully'
+      });
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        res.status(404).json({
+          error: 'Run not found',
+          message: error.message
+        });
+      } else if (error.message.includes('already running')) {
+        res.status(409).json({
+          error: 'Run already running',
+          message: error.message
+        });
+      } else {
+        console.error('Error resuming evolution run:', error);
+        res.status(500).json({
+          error: 'Failed to resume evolution run',
+          message: error.message
+        });
+      }
+    }
+  });
+
   // Get run logs (if we want to serve logs via REST)
   router.get('/runs/:runId/logs', async (req, res) => {
     try {

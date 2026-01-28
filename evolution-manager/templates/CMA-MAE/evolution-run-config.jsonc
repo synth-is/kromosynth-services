@@ -1,0 +1,182 @@
+{
+  "algorithm": "mapElites_with_uBC",
+  "evoRunsGroup": "generalTestEvoruns",
+  "seedEvals": 1800,
+  "eliteWinsOnlyOneCell": false,
+  "classRestriction": null,
+  "batchSize": 180,
+  "maxNumberOfParents": 1,
+  "terminationCondition": {
+    "qdScoreGradientThreshold": 0.01,
+    "numberOfEvals": 100000
+  },
+  "gradientWindowSize": 10,
+  "scoreProportionalToNumberOfEvalsTerminationCondition": false,
+  "populationSize": 20,
+  "gridDepth": 50,
+  "evoRunsDirPath": "/Users/bjornpjo/Developer/apps/synth.is/kromosynth-cli/cli-app/evoruns/",
+  "favoritesDirPath": "/Users/bjornpjo/iCloud/Documents/synth.is/favoriteGenomes",
+  "geneEvaluationProtocol": "websocket",
+  "childProcessBatchSize": 1,
+  "evaluationCandidateWavFilesDirPath": null,
+  "probabilityMutatingWaveNetwork": 0.5,
+  "probabilityMutatingPatch": 0.5,
+  "oneCPPNPerFrequency": false,
+  "classScoringDurations": [
+    4
+  ],
+  "classScoringNoteDeltas": [
+    0
+  ],
+  "classScoringVelocities": [
+    1
+  ],
+  "antiAliasing": true,
+  "frequencyUpdatesApplyToAllPathcNetworkOutputs": false,
+  "classScoringVariationsAsContainerDimensions": false,
+  "classifiers": [
+    {
+      "classConfigurations": [
+        {
+          "refSetName": "cma-mae",
+          "featureExtractionEndpoint": "/clap",
+          "featureExtractionType": "clap",
+          "projectionEndpoint": "/qdhf-projection",
+          "shouldRetrainProjection": true,
+          "projectionRetrainingLinearGapIncrement": 10,
+          "qdhfTrainingConfig": {
+            "enabled": true,
+            "epochs": 10,
+            "triplets_per_epoch": 5000,
+            "learning_rate": 0.0001,
+            "k_neighbors": 10,
+            "margin": 1
+          },
+          "qualityEvaluationEndpoint": "/musicality?config_preset=noise_only",
+          "zScoreNormalisationReferenceFeaturesPaths": [
+            "/Users/bjornpjo/Downloads/audio-features/nsynth/nsynth-train-features-clap"
+          ],
+          "qualityFromFeatures": false,
+          "usingQueryEmbeddings": false,
+          "shouldCalculateNovelty": false,
+          "shouldCalculateSurprise": false,
+          "shouldTrackDiversity": true,
+          "sampleRate": 48000,
+          "mapSelectorBias": "uniform",
+          "eliteRemappingCompetitionCriteria": "score"
+        }
+      ],
+      "classificationDimensions": [
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        [
+          "oneShot",
+          "VIworthy"
+        ]
+      ]
+    }
+  ],
+  "classesAsMaps": true,
+  "mapSwitchingCondition": {
+    "switchEveryNGenerations": 10,
+    "coverageWithoutIncreaseGenerations": 10,
+    "qdScoreWithoutIncreaseGenerations": 10,
+    "coverageGradientThreshold": 0.6,
+    "qdScoreGradientThreshold": 0.6,
+    "gradientWindowSize": 10
+  },
+  "classifierIndex": 0,
+  "ckptDir": "/Users/bjornpjo/.cache/torch/hub/checkpoints",
+  "yamnetModelUrl": "file:///Users/bjornpjo/Developer/vendor/tfjs-model_yamnet_tfjs_1/model.json",
+  "measureCollectivePerformance": false,
+  "useGpuForTensorflow": true,
+  "renderSampleRateForClassifier": 16000,
+  "commitEliteMapToGitEveryNIterations": 1,
+  "addGenomesToGit": false,
+  "prunePastEliteGenomesEveryNGenerations": null,
+  "renderEliteMapToWavFilesEveryNGenerations": 500,
+  "renderElitesToWavFiles": false,
+  "evoRendersDirPath": "/Users/bjornpjo/Developer/apps/synth.is/kromosynth-cli/cli-app/evorenders/",
+  "processingUtilisation": null,
+  "geneVariationServers": [
+    "ws://127.0.0.1:50051",
+    "ws://127.0.0.1:50052",
+    "ws://127.0.0.1:50053"
+  ],
+  "geneRenderingServers": [
+    "ws://127.0.0.1:60051",
+    "ws://127.0.0.1:60052",
+    "ws://127.0.0.1:60053"
+  ],
+  "geneEvaluationServers": [],
+  "evaluationFeatureServers": [
+    "ws://127.0.0.1:32051",
+    "ws://127.0.0.1:32052",
+    "ws://127.0.0.1:32053"
+  ],
+  "evaluationQualityServers": [
+    "ws://127.0.0.1:32060"
+  ],
+  "evaluationProjectionServers": [
+    "ws://127.0.0.1:33053"
+  ],
+  "cmaMAEConfig": {
+    "enabled": true,
+    "pyribsEndpoint": "http://127.0.0.1:34052",
+    "genome_dir": null,
+    "solution_dim": 1,
+    "bd_dim": 6,
+    "num_cells": 10000,
+    "ranges": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "num_emitters": 5,
+    "batch_size": 36,
+    "sigma0": 0.5,
+    "seed": null
+  },
+  "mqConfig": {
+    "enabled": false
+  },
+  "incrementalAnalysis": {
+    "collectLineageDuringRun": true,
+    "lineageCollectionInterval": 250,
+    "lineageStepSize": 1,
+    "collectHeatmapDuringRun": true,
+    "heatmapCollectionInterval": 500,
+    "heatmapStepSize": 500,
+    "collectQDScoreDuringRun": true,
+    "qdScoreCollectionInterval": 50,
+    "collectCoverageDuringRun": true,
+    "coverageCollectionInterval": 50,
+    "analysisResultsDir": "analysisResults",
+    "compressOutputFiles": true
+  }
+}

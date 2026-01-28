@@ -1,0 +1,20 @@
+{
+  "name": "CMA MAE",
+  "description": "Generated from CLI config: cma-mae_qdhf",
+  "version": "1.0.0",
+  "author": "Generated from CLI config",
+  "tags": [
+    "generated",
+    "cli-import",
+    "cma-mae_qdhf"
+  ],
+  "estimatedRunTime": "30-60 minutes",
+  "resourceRequirements": {
+    "memory": "1-2GB",
+    "cpu": "Medium"
+  },
+  "originalConfig": {
+    "label": "cma-mae_qdhf",
+    "generatedAt": "2026-01-26T15:24:29.238Z"
+  }
+}

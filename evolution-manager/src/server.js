@@ -38,12 +38,17 @@ server.listen(PORT, () => {
   console.log(`🔗 REST API: http://localhost:${PORT}/api`);
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down evolution manager...');
+// Graceful shutdown handler
+async function gracefulShutdown(signal) {
+  console.log(`\n🛑 Received ${signal}, shutting down evolution manager...`);
   await evolutionManager.shutdown();
   server.close(() => {
     console.log('👋 Evolution manager stopped');
     process.exit(0);
   });
-});
+  // Force exit after timeout in case server.close hangs
+  setTimeout(() => process.exit(1), 10000);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

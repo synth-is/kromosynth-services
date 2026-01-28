@@ -274,16 +274,21 @@ export class ConfigManager {
       configPaths.hyperparametersPath = hyperparametersPath;
     }
 
+    // Use the template's label if available, otherwise generate one
+    const templateLabel = config.evolutionRuns?.evoRuns?.[0]?.label || `run_${runId}`;
+    // Match CLI convention: id = ulid + "_" + label (e.g. "01KFYA32R09C5KJYNH1SM2W1DR_CMA-MAE_run")
+    const iterationId = `${runId}_${templateLabel}`;
+
     // Create the main evolution runs config that references the other files
     const evolutionRunsConfig = {
       baseEvolutionRunConfigFile: configPaths.evolutionRunConfigPath,
       baseEvolutionaryHyperparametersFile: configPaths.hyperparametersPath,
       evoRuns: [
         {
-          label: `run_${runId}`,
+          label: templateLabel,
           iterations: [
             {
-              id: runId
+              id: iterationId
             }
           ]
         }
@@ -295,6 +300,7 @@ export class ConfigManager {
     const mainConfigPath = path.join(runDir, 'evolution-runs-config.jsonc');
     await fs.writeFile(mainConfigPath, JSON.stringify(evolutionRunsConfig, null, 2));
     configPaths.configFilePath = mainConfigPath;
+    configPaths.iterationId = iterationId;
 
     return configPaths;
   }

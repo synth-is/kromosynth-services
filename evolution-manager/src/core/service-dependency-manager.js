@@ -89,14 +89,25 @@ export class ServiceDependencyManager {
     config.apps.forEach(app => {
       const serviceName = this.mapAppToServiceType(app.name);
       if (serviceName && portAllocation.services[serviceName]) {
+        const allocatedPort = portAllocation.services[serviceName][0];
         app.env = app.env || {};
-        app.env.PORT = portAllocation.services[serviceName][0]; // Use first port for PM2
+        const originalPort = app.env.PORT;
+        app.env.PORT = allocatedPort; // Use first port for PM2
+
+        // Also update --port in args if present (for services that read port from CLI args)
+        if (app.args && typeof app.args === 'string' && originalPort) {
+          app.args = app.args.replace(
+            new RegExp(`--port\\s+${originalPort}\\b`),
+            `--port ${allocatedPort}`
+          );
+        }
 
         // Add run identifier to app name to avoid conflicts
         app.name = `${app.name}_${runId}`;
 
-        // Resolve script path using environment variables
-        if (app.script) {
+        // Resolve script path: skip if the app has a cwd (PM2 resolves relative
+        // paths from cwd) or if the script is already an absolute path
+        if (app.script && !app.cwd && !path.isAbsolute(app.script)) {
           app.script = this.resolveScriptPath(app.script);
         }
 
@@ -193,7 +204,12 @@ export class ServiceDependencyManager {
       'kromosynth-render-socket-server': 'geneRendering',
       'kromosynth-evaluation-socket-server_features': 'evaluationFeatures',
       'kromosynth-evaluation-socket-server_quality_ref_features': 'evaluationQuality',
-      'kromosynth-evaluation-socket-server_projection_pca_quantised': 'evaluationProjection'
+      'kromosynth-evaluation-socket-server_projection_pca_quantised': 'evaluationProjection',
+      // CMA-MAE specific services
+      'kromosynth-clap-service': 'clapFeatures',
+      'kromosynth-qdhf-projection-service': 'qdhfProjection',
+      'kromosynth-quality-musicality-service': 'qualityMusicality',
+      'kromosynth-pyribs-service': 'pyribs',
     };
 
     return mapping[appName] || null;
@@ -403,8 +419,16 @@ export class ServiceDependencyManager {
     const updatedConfig = { ...runConfig };
     const serviceUrls = serviceInfo.serviceUrls;
 
-    // Update service endpoints in the evolution config
-    Object.assign(updatedConfig, serviceUrls);
+    // Extract pyribs endpoint before assigning (it's not a direct config key)
+    const { pyribsEndpoint, ...standardUrls } = serviceUrls;
+
+    // Update standard service endpoints in the evolution config
+    Object.assign(updatedConfig, standardUrls);
+
+    // Update CMA-MAE specific config if pyribs endpoint is available
+    if (pyribsEndpoint && updatedConfig.cmaMAEConfig) {
+      updatedConfig.cmaMAEConfig = { ...updatedConfig.cmaMAEConfig, pyribsEndpoint };
+    }
 
     return updatedConfig;
   }
