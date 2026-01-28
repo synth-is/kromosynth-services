@@ -13,7 +13,8 @@ export default {
       args: "--max-old-space-size=1024 --modelUrl file:///Users/bjornpjo/Developer/vendor/tfjs-model_yamnet_tfjs_1/model.json --processTitle kromosynth-gRPC-variation",
       instances: 3,
       exec_mode: "cluster",
-      max_memory_restart: '2G',
+      max_memory_restart: '1500M',
+      cron_restart: '10 */2 * * *', // Every 2 hours at :10 - staggered to avoid ECONNRESET storms
       increment_var: 'PORT',
       env: {
         "PORT": 50051,
@@ -27,7 +28,8 @@ export default {
       args: "--max-old-space-size=1024 --processTitle kromosynth-render-socket-server",
       instances: 3,
       exec_mode: "cluster",
-      max_memory_restart: '2G',
+      max_memory_restart: '1500M',
+      cron_restart: '20 */2 * * *', // Every 2 hours at :20 - staggered
       increment_var: 'PORT',
       env: {
         "PORT": 60051,
@@ -43,7 +45,8 @@ export default {
       script: "features/clap/ws_clap_service.py",
       instances: 3,
       exec_mode: "fork",
-      max_memory_restart: '4G',
+      max_memory_restart: '3G',
+      cron_restart: '30 */2 * * *', // Every 2 hours at :30 - staggered
       increment_var: 'PORT',
       env: {
         "PORT": 32051,
@@ -59,6 +62,7 @@ export default {
       instances: 1,
       exec_mode: "fork",
       max_memory_restart: '2G',
+      cron_restart: '40 */2 * * *', // Every 2 hours at :40 - staggered
       increment_var: 'PORT',
       env: {
         "PORT": 33053
@@ -73,6 +77,7 @@ export default {
       instances: 1,
       exec_mode: "fork",
       max_memory_restart: '2G',
+      cron_restart: '50 */2 * * *', // Every 2 hours at :50 - staggered
       increment_var: 'PORT',
       env: {
         "PORT": 32060
@@ -87,6 +92,7 @@ export default {
       instances: 1,
       exec_mode: "fork",
       max_memory_restart: '2G',
+      cron_restart: '0 */2 * * *', // Every 2 hours at :00 - staggered
       increment_var: 'PORT',
       env: {
         "PORT": 34052
