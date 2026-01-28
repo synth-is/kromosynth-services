@@ -61,8 +61,8 @@ export default {
       args: "--model models/projection/projection_v1.pt --host 127.0.0.1 --port 33053",
       instances: 1,
       exec_mode: "fork",
-      max_memory_restart: '2G',
-      cron_restart: '40 */2 * * *', // Every 2 hours at :40 - staggered
+      max_memory_restart: '4G', // Higher limit - this service trains incrementally, restart loses model state
+      // NO cron_restart - projection service holds trained model state in memory
       increment_var: 'PORT',
       env: {
         "PORT": 33053
@@ -91,8 +91,8 @@ export default {
       args: "--port 34052",
       instances: 1,
       exec_mode: "fork",
-      max_memory_restart: '2G',
-      cron_restart: '0 */2 * * *', // Every 2 hours at :00 - staggered
+      max_memory_restart: '4G', // Higher limit - this service is stateful and restart loses QD state
+      // NO cron_restart - pyribs holds CMA-MAE algorithm state in memory, restart would lose it
       increment_var: 'PORT',
       env: {
         "PORT": 34052

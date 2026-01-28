@@ -8,7 +8,7 @@
   "maxNumberOfParents": 1,
   "terminationCondition": {
     "qdScoreGradientThreshold": 0.01,
-    "numberOfEvals": 100000
+    "numberOfEvals": 1000000
   },
   "gradientWindowSize": 10,
   "scoreProportionalToNumberOfEvalsTerminationCondition": false,
