@@ -162,9 +162,6 @@
     "sigma0": 0.5,
     "seed": null
   },
-  "mqConfig": {
-    "enabled": false
-  },
   "incrementalAnalysis": {
     "collectLineageDuringRun": true,
     "lineageCollectionInterval": 250,
@@ -178,5 +175,15 @@
     "coverageCollectionInterval": 50,
     "analysisResultsDir": "analysisResults",
     "compressOutputFiles": true
+  },
+  "mqConfig": {
+    "enabled": true,
+    "baseUrl": "http://localhost:3003/api",
+    "checkFrequency": 1,
+    "maxRequestsPerCheck": 5,
+    "ancestryDepth": 5,
+    "includeParentGenomes": true,
+    "includeSiblings": true,
+    "maxSiblings": 3
   }
 }
