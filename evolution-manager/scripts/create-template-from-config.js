@@ -4,15 +4,24 @@ import fs from 'fs-extra';
 import path from 'path';
 import { parse as parseJSONC } from 'jsonc-parser';
 import merge from 'deepmerge';
+import {
+  generateEcosystemConfigString,
+  getRequirementsSummary
+} from './generate-ecosystem-config.js';
 
 /**
  * Script to create evolution-manager templates from existing kromosynth CLI configurations
- * 
+ *
  * Usage:
  *   node scripts/create-template-from-config.js <config-file> [template-name] [evo-run-index]
- * 
+ *
  * Example:
  *   node scripts/create-template-from-config.js /path/to/evolution-runs-config.jsonc my-template 0
+ *
+ * Features:
+ *   - Automatically detects required services from evolution config
+ *   - Generates ecosystem config with staggered cron restarts for stateless services
+ *   - Protects stateful services (pyribs, qdhf-projection) from automatic restarts
  */
 
 async function createTemplateFromConfig() {
@@ -183,11 +192,27 @@ async function createTemplate(templateName, evoRun, runConfig, hyperparameters) 
     JSON.stringify(evolutionRunsConfigTemplate, null, 2)
   );
 
+  // Generate ecosystem config based on detected service requirements
+  console.log('🔧 Analyzing service requirements...');
+  const summary = getRequirementsSummary(runConfig);
+  console.log(`   📊 Detected ${summary.totalServices} required services:`);
+  summary.services.forEach(s => console.log(`      - ${s}`));
+  if (summary.hasStatefulServices) {
+    console.log(`   ⚠️  Stateful services (no cron_restart): ${summary.statefulServices.join(', ')}`);
+  }
+
+  const ecosystemConfig = generateEcosystemConfigString(runConfig);
+  await fs.writeFile(
+    path.join(templateDir, 'ecosystem_default.config.js'),
+    ecosystemConfig
+  );
+
   console.log('📝 Created files:');
   console.log('   - template-info.jsonc');
   console.log('   - evolution-run-config.jsonc');
   console.log('   - evolutionary-hyperparameters.jsonc');
   console.log('   - evolution-runs-config.jsonc');
+  console.log('   - ecosystem_default.config.js (with staggered cron restarts)');
 }
 
 /**
@@ -278,14 +303,14 @@ function sanitizeTemplateName(label) {
 /**
  * Simple prompt for user input
  */
-function promptUser(question) {
+async function promptUser(question) {
+  const readline = await import('readline');
   return new Promise((resolve) => {
-    const readline = require('readline');
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
-    
+
     rl.question(question, (answer) => {
       rl.close();
       resolve(answer);
