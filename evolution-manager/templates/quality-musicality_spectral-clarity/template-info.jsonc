@@ -1,0 +1,20 @@
+{
+  "name": "Quality Musicality_spectral Clarity",
+  "description": "Generated from CLI config: quality-musicality_spectral-clarity",
+  "version": "1.0.0",
+  "author": "Generated from CLI config",
+  "tags": [
+    "generated",
+    "cli-import",
+    "quality-musicality_spectral-clarity"
+  ],
+  "estimatedRunTime": "30-60 minutes",
+  "resourceRequirements": {
+    "memory": "1-2GB",
+    "cpu": "Medium"
+  },
+  "originalConfig": {
+    "label": "quality-musicality_spectral-clarity",
+    "generatedAt": "2026-01-29T14:26:26.040Z"
+  }
+}
