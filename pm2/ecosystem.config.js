@@ -84,6 +84,20 @@ module.exports = {
       }
     },
     {
+      name: 'kromosynth-clap-breeding',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate',
+      interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
+      script: 'features/clap/ws_clap_service.py',
+      instances: 1,
+      exec_mode: 'fork',
+      max_memory_restart: '4G',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 32051,
+        CLAP_DEVICE: 'mps'
+      }
+    },
+    {
       name: 'kromosynth-evoruns',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evoruns',
       script: 'npm',
