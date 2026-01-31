@@ -219,6 +219,98 @@ Each template directory contains:
 - PM2 installed globally (`npm install -g pm2`)
 - kromosynth-cli available at `../kromosynth-cli/`
 
+## Auto-Run Scheduler
+
+The evolution manager includes an automatic run scheduler that rotates between enabled templates. This allows continuous evolution across different configurations without manual intervention.
+
+### Scheduling Modes
+
+- **Round-Robin** (default): Templates take turns running, each for their configured time slice
+- **Priority**: Templates run in priority order (lower number = higher priority)
+
+### Enabling Templates for Auto-Scheduling
+
+```bash
+# Enable a template with default settings (priority 1, 30 min time slice)
+curl -X POST http://localhost:3005/api/auto-run/templates/CMA-MAE/enable \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Enable with custom priority and time slice
+curl -X POST http://localhost:3005/api/auto-run/templates/CMA-MAE/enable \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 1, "timeSliceMinutes": 30}'
+
+curl -X POST http://localhost:3005/api/auto-run/templates/quality-musicality_spectral-clarity/enable \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 2, "timeSliceMinutes": 45}'
+```
+
+### Updating Template Priority
+
+```bash
+# Update priority for an existing template
+curl -X PUT http://localhost:3005/api/auto-run/templates/CMA-MAE/config \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 2}'
+
+# Update multiple settings
+curl -X PUT http://localhost:3005/api/auto-run/templates/CMA-MAE/config \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 1, "timeSliceMinutes": 60}'
+```
+
+### Switching Scheduling Mode
+
+```bash
+# Switch to priority-based scheduling
+curl -X PUT http://localhost:3005/api/auto-run/config \
+  -H "Content-Type: application/json" \
+  -d '{"schedulingMode": "priority"}'
+
+# Switch back to round-robin
+curl -X PUT http://localhost:3005/api/auto-run/config \
+  -H "Content-Type: application/json" \
+  -d '{"schedulingMode": "round-robin"}'
+```
+
+### Controlling the Scheduler
+
+```bash
+# Start the auto-run scheduler
+curl -X POST http://localhost:3005/api/auto-run/start
+
+# Stop the auto-run scheduler
+curl -X POST http://localhost:3005/api/auto-run/stop
+
+# Get current scheduler status
+curl http://localhost:3005/api/auto-run/status
+
+# Get all templates with scheduling status
+curl http://localhost:3005/api/auto-run/templates
+
+# Disable a template from auto-scheduling
+curl -X POST http://localhost:3005/api/auto-run/templates/CMA-MAE/disable \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Remove a template entirely from auto-run config
+curl -X DELETE "http://localhost:3005/api/auto-run/templates/CMA-MAE?ecosystemVariant=default"
+```
+
+### Priority System
+
+- **Lower number = Higher priority**: A template with priority `1` runs before one with priority `2`
+- **Default priority**: Templates are assigned priority `1` when enabled without specifying
+- **Only applies in priority mode**: In round-robin mode, all templates get equal time regardless of priority
+
+### Auto-Run WebSocket Events
+
+**Server to Client:**
+- `auto-run-status-change` - Scheduler started/stopped
+- `template-config-change` - Template enabled/disabled/updated
+- `run-rotation` - Run switched to a different template
+
 ## Environment Variables
 
 - `PORT` - Service port (default: 3005)
