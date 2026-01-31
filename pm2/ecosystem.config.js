@@ -58,6 +58,32 @@ module.exports = {
       }
     },
     {
+      name: 'kromosynth-variation-breeding',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-cli',
+      script: 'node',
+      args: 'gRPC/genomeVariationWS.js --port 49071 --modelUrl file:///Users/bjornpjo/Developer/vendor/tfjs-model_yamnet_tfjs_1/model.json --processTitle kromosynth-variation-breeding',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 49071,
+        TF_FORCE_GPU_ALLOW_GROWTH: true
+      }
+    },
+    {
+      name: 'kromosynth-features-breeding',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/evaluation/unsupervised',
+      interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
+      script: 'features.py',
+      args: '--host 127.0.0.1 --models-path /Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/measurements/models',
+      instances: 2,
+      exec_mode: 'fork',
+      max_memory_restart: '2G',
+      increment_var: 'PORT',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 61061
+      }
+    },
+    {
       name: 'kromosynth-evoruns',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evoruns',
       script: 'npm',

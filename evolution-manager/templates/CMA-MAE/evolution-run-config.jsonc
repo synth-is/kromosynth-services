@@ -164,7 +164,7 @@
   },
   "incrementalAnalysis": {
     "collectLineageDuringRun": true,
-    "lineageCollectionInterval": 250,
+    "lineageCollectionInterval": 25,
     "lineageStepSize": 1,
     "collectHeatmapDuringRun": true,
     "heatmapCollectionInterval": 500,
