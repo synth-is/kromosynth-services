@@ -6,6 +6,7 @@ import { parse as parseJSONC } from 'jsonc-parser';
 import { ulid } from 'ulid';
 import { ConfigManager } from '../config/config-manager.js';
 import { ServiceDependencyManager } from './service-dependency-manager.js';
+import { AutoRunScheduler } from './auto-run-scheduler.js';
 
 export class EvolutionManager {
   constructor() {
@@ -14,6 +15,9 @@ export class EvolutionManager {
     this.configManager = new ConfigManager();
     this.serviceDependencyManager = new ServiceDependencyManager();
     this.isConnected = false;
+
+    // Auto-run scheduler
+    this.autoRunScheduler = new AutoRunScheduler(this);
 
     // Path for persisting run state across restarts
     this.runStatePath = path.join(process.cwd(), 'working', 'run-state.json');
@@ -115,7 +119,15 @@ export class EvolutionManager {
         bus.on('log:err', (packet) => {
           this.handleProcessLog(packet, 'stderr');
         });
+
+        // Handle process exit events for scheduler notification
+        bus.on('process:event', (packet) => {
+          this.handleProcessEvent(packet);
+        });
       });
+
+      // Initialize auto-run scheduler after PM2 is connected
+      await this.autoRunScheduler.initialize();
 
     } catch (error) {
       console.error('❌ Failed to connect to PM2:', error);
@@ -137,11 +149,20 @@ export class EvolutionManager {
           status: run.status,
           startedAt: run.startedAt,
           stoppedAt: run.stoppedAt,
+          pausedAt: run.pausedAt,
+          terminatedAt: run.terminatedAt,
+          resumedAt: run.resumedAt,
           pm2Name: run.pm2Name,
           configPath: run.configPath,
           outputDir: run.outputDir,
           progress: run.progress,
           serviceInfo: run.serviceInfo,
+          // Auto-scheduling related fields
+          autoScheduled: run.autoScheduled,
+          pausedByScheduler: run.pausedByScheduler,
+          pauseCount: run.pauseCount,
+          totalActiveTime: run.totalActiveTime,
+          timeSliceStartedAt: run.timeSliceStartedAt,
         };
       }
       await fs.ensureDir(path.dirname(this.runStatePath));
@@ -176,8 +197,13 @@ export class EvolutionManager {
           run.memory = pm2Proc.monit?.memory;
         } else if (run.status === 'running') {
           // Was running but process is gone — mark as stopped
-          run.status = 'stopped';
-          run.stoppedAt = run.stoppedAt || new Date().toISOString();
+          // (unless it was paused, in which case keep paused status)
+          if (!run.pausedByScheduler) {
+            run.status = 'stopped';
+            run.stoppedAt = run.stoppedAt || new Date().toISOString();
+          } else {
+            run.status = 'paused';
+          }
         }
 
         // Re-derive totalGenerations from the working config on disk
@@ -298,10 +324,12 @@ export class EvolutionManager {
         ecosystemVariant,
         status: 'running',
         startedAt: timestamp,
+        timeSliceStartedAt: timestamp, // Track when current time slice started
         pm2Name: pm2Config.name,
         configPath: workingConfig.configFilePath,
         outputDir: workingConfig.outputDir,
         options,
+        autoScheduled: options.autoScheduled || false,
         serviceInfo: serviceInfo ? {
           portAllocation: serviceInfo.portAllocation,
           serviceUrls: serviceInfo.serviceUrls,
@@ -387,8 +415,74 @@ export class EvolutionManager {
       console.log(`✅ Evolution run ${runId} stopped successfully`);
       await this.saveRunState();
 
+      // Notify scheduler that run ended (user-initiated stop)
+      if (this.autoRunScheduler && run.autoScheduled) {
+        this.autoRunScheduler.onRunEnded(runId, 'stopped');
+      }
+
     } catch (error) {
       console.error(`❌ Failed to stop evolution run ${runId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Pause an evolution run (used by scheduler for time-slice rotation)
+   * Unlike stopRun(), this marks the run as 'paused' so it can be resumed later.
+   * Service dependencies are stopped but the run state is preserved.
+   * @param {string} runId - Run ID to pause
+   */
+  async pauseRun(runId) {
+    const run = this.runs.get(runId);
+    if (!run) {
+      throw new Error(`Run ${runId} not found`);
+    }
+
+    if (run.status !== 'running') {
+      throw new Error(`Run ${runId} is not running (status: ${run.status})`);
+    }
+
+    try {
+      console.log(`⏸️ Pausing evolution run ${runId}...`);
+
+      // Step 1: Stop the evolution process (but don't delete from PM2 tracking)
+      if (run.pm2Name) {
+        try {
+          await this.pm2Stop(run.pm2Name);
+          await this.pm2Delete(run.pm2Name);
+          console.log(`✅ Stopped evolution process for run ${runId}`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to stop evolution process for run ${runId}:`, error.message);
+        }
+      }
+
+      // Step 2: Stop service dependencies (they will be re-started on resume)
+      try {
+        await this.serviceDependencyManager.stopServicesForRun(runId);
+        console.log(`✅ Stopped service dependencies for run ${runId}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to stop service dependencies for run ${runId}:`, error.message);
+      }
+
+      // Step 3: Update run metadata - mark as PAUSED (not stopped)
+      run.status = 'paused';
+      run.pausedAt = new Date().toISOString();
+      // Track time spent running in this time slice
+      if (run.timeSliceStartedAt) {
+        const sliceTime = Date.now() - new Date(run.timeSliceStartedAt).getTime();
+        run.totalActiveTime = (run.totalActiveTime || 0) + sliceTime;
+      }
+
+      // Emit run-paused event to connected clients
+      if (this.socketHandler) {
+        this.socketHandler.emit('run-paused', { runId, timestamp: run.pausedAt });
+      }
+
+      console.log(`✅ Evolution run ${runId} paused successfully`);
+      await this.saveRunState();
+
+    } catch (error) {
+      console.error(`❌ Failed to pause evolution run ${runId}:`, error);
       throw error;
     }
   }
@@ -502,7 +596,9 @@ export class EvolutionManager {
       run.status = 'running';
       run.resumedAt = new Date().toISOString();
       run.stoppedAt = null;
+      run.pausedAt = null;
       run.pm2Name = pm2Name;
+      run.timeSliceStartedAt = run.resumedAt; // Track when this time slice started
       run.serviceInfo = serviceInfo ? {
         portAllocation: serviceInfo.portAllocation,
         serviceUrls: serviceInfo.serviceUrls,
@@ -780,6 +876,59 @@ export class EvolutionManager {
   }
 
   /**
+   * Handle PM2 process events (exit, error, etc.)
+   * Used to detect when evolution runs terminate or fail
+   */
+  handleProcessEvent(packet) {
+    const processName = packet.process?.name;
+    const event = packet.event;
+
+    // Only handle evolution process events
+    if (!processName || !processName.startsWith('kromosynth-evolution-')) return;
+
+    const runId = this.extractRunId(processName);
+    if (!runId || !this.runs.has(runId)) return;
+
+    const run = this.runs.get(runId);
+
+    // Handle process exit events
+    if (event === 'exit') {
+      const exitCode = packet.process?.exit_code;
+      console.log(`📋 Evolution process exited: ${runId}, code: ${exitCode}`);
+
+      // Determine the reason for exit
+      let reason;
+      if (run.status === 'paused') {
+        // Process was paused by scheduler, not a real termination
+        return;
+      } else if (exitCode === 0) {
+        // Normal termination - check if elite map indicates completion
+        reason = 'terminated';
+        run.status = 'terminated';
+        run.terminatedAt = new Date().toISOString();
+      } else {
+        // Non-zero exit code indicates failure
+        reason = 'failed';
+        run.status = 'failed';
+        run.failedAt = new Date().toISOString();
+        run.exitCode = exitCode;
+      }
+
+      this.saveRunState();
+
+      // Emit WebSocket event
+      if (this.socketHandler) {
+        this.socketHandler.emit('run-ended', { runId, reason, exitCode });
+      }
+
+      // Notify scheduler
+      if (this.autoRunScheduler && run.autoScheduled) {
+        this.autoRunScheduler.onRunEnded(runId, reason);
+      }
+    }
+  }
+
+  /**
    * Set socket handler for websocket communications
    */
   setSocketHandler(socketHandler) {
@@ -791,12 +940,17 @@ export class EvolutionManager {
    */
   async shutdown() {
     console.log('🛑 Shutting down evolution manager...');
-    
+
+    // Shutdown auto-run scheduler first
+    if (this.autoRunScheduler) {
+      await this.autoRunScheduler.shutdown();
+    }
+
     if (this.isConnected) {
       // Stop all running evolution processes
       const runs = Array.from(this.runs.values());
       const runningRuns = runs.filter(run => run.status === 'running');
-      
+
       console.log(`🛑 Stopping ${runningRuns.length} active evolution runs...`);
       for (const run of runningRuns) {
         try {
@@ -805,7 +959,7 @@ export class EvolutionManager {
           console.error(`Failed to stop run ${run.id}:`, error);
         }
       }
-      
+
       // Cleanup all service dependencies
       await this.serviceDependencyManager.cleanup();
 
@@ -816,7 +970,7 @@ export class EvolutionManager {
       this.isConnected = false;
       console.log('✅ Disconnected from PM2');
     }
-    
+
     console.log('✅ Evolution manager shutdown complete');
   }
 }

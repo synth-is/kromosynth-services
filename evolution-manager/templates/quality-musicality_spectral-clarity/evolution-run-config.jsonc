@@ -109,6 +109,20 @@
   "evaluationProjectionServers": [
     "ws://127.0.0.1:33051"
   ],
+  "incrementalAnalysis": {
+    "collectLineageDuringRun": true,
+    "lineageCollectionInterval": 25,
+    "lineageStepSize": 1,
+    "collectHeatmapDuringRun": true,
+    "heatmapCollectionInterval": 500,
+    "heatmapStepSize": 500,
+    "collectQDScoreDuringRun": true,
+    "qdScoreCollectionInterval": 50,
+    "collectCoverageDuringRun": true,
+    "coverageCollectionInterval": 50,
+    "analysisResultsDir": "analysisResults",
+    "compressOutputFiles": true
+  },
   "mqConfig": {
     "enabled": true,
     "baseUrl": "http://localhost:3003/api",

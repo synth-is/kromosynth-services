@@ -257,15 +257,267 @@ export function setupApiRoutes(app, evolutionManager, io) {
     try {
       const serviceInfo = evolutionManager.serviceDependencyManager.getServiceInfo(req.params.runId);
       if (!serviceInfo) {
-        return res.status(404).json({ 
-          error: 'No services found for this run' 
+        return res.status(404).json({
+          error: 'No services found for this run'
         });
       }
       res.json({ serviceInfo });
     } catch (error) {
-      res.status(500).json({ 
-        error: 'Failed to get service info', 
-        message: error.message 
+      res.status(500).json({
+        error: 'Failed to get service info',
+        message: error.message
+      });
+    }
+  });
+
+  // ========================================
+  // Auto-Run Scheduler Endpoints
+  // ========================================
+
+  const scheduler = evolutionManager.autoRunScheduler;
+
+  // Get auto-run scheduler status
+  router.get('/auto-run/status', (req, res) => {
+    try {
+      const status = scheduler.getStatus();
+      res.json({ status });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to get scheduler status',
+        message: error.message
+      });
+    }
+  });
+
+  // Get auto-run configuration
+  router.get('/auto-run/config', (req, res) => {
+    try {
+      const config = scheduler.getConfig();
+      res.json({ config });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to get scheduler config',
+        message: error.message
+      });
+    }
+  });
+
+  // Update auto-run configuration
+  router.put('/auto-run/config', async (req, res) => {
+    try {
+      const config = await scheduler.updateConfig(req.body);
+      io.emit('auto-run-status-change', scheduler.getStatus());
+      res.json({ config });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to update scheduler config',
+        message: error.message
+      });
+    }
+  });
+
+  // Enable auto-run scheduling
+  router.post('/auto-run/enable', async (req, res) => {
+    try {
+      await scheduler.enable();
+      io.emit('auto-run-status-change', scheduler.getStatus());
+      res.json({
+        message: 'Auto-run scheduling enabled',
+        status: scheduler.getStatus()
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to enable scheduler',
+        message: error.message
+      });
+    }
+  });
+
+  // Disable auto-run scheduling
+  router.post('/auto-run/disable', async (req, res) => {
+    try {
+      await scheduler.disable();
+      io.emit('auto-run-status-change', scheduler.getStatus());
+      res.json({
+        message: 'Auto-run scheduling disabled',
+        status: scheduler.getStatus()
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to disable scheduler',
+        message: error.message
+      });
+    }
+  });
+
+  // Resume auto-run scheduling (after pause due to failures)
+  router.post('/auto-run/resume', async (req, res) => {
+    try {
+      await scheduler.resumeScheduling();
+      io.emit('auto-run-status-change', scheduler.getStatus());
+      res.json({
+        message: 'Auto-run scheduling resumed',
+        status: scheduler.getStatus()
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to resume scheduler',
+        message: error.message
+      });
+    }
+  });
+
+  // Get current schedule information
+  router.get('/auto-run/schedule', async (req, res) => {
+    try {
+      const schedule = await scheduler.getScheduleInfo();
+      res.json({ schedule });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to get schedule info',
+        message: error.message
+      });
+    }
+  });
+
+  // Get all templates with their scheduling status
+  router.get('/auto-run/templates', async (req, res) => {
+    try {
+      const allTemplates = await evolutionManager.getTemplates();
+      const enabledTemplates = scheduler.getEnabledTemplates();
+      const schedulerConfig = scheduler.getConfig();
+
+      // Merge template info with scheduling status
+      const templatesWithStatus = allTemplates.map(template => {
+        const scheduledConfig = schedulerConfig.enabledTemplates.find(
+          t => t.templateName === template.name
+        );
+        return {
+          ...template,
+          autoRunEnabled: scheduledConfig?.enabled || false,
+          autoRunConfig: scheduledConfig || null
+        };
+      });
+
+      res.json({ templates: templatesWithStatus });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to get templates with scheduling status',
+        message: error.message
+      });
+    }
+  });
+
+  // Enable a template for auto-scheduling
+  router.post('/auto-run/templates/:templateName/enable', async (req, res) => {
+    try {
+      const { templateName } = req.params;
+      const { ecosystemVariant = 'default', priority, timeSliceMinutes } = req.body;
+
+      const template = await scheduler.enableTemplate(templateName, ecosystemVariant, {
+        priority,
+        timeSliceMinutes
+      });
+
+      io.emit('template-config-change', {
+        templateName,
+        ecosystemVariant,
+        enabled: true
+      });
+
+      res.json({
+        message: `Template ${templateName} enabled for auto-scheduling`,
+        template
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to enable template',
+        message: error.message
+      });
+    }
+  });
+
+  // Disable a template from auto-scheduling
+  router.post('/auto-run/templates/:templateName/disable', async (req, res) => {
+    try {
+      const { templateName } = req.params;
+      const { ecosystemVariant = 'default' } = req.body;
+
+      await scheduler.disableTemplate(templateName, ecosystemVariant);
+
+      io.emit('template-config-change', {
+        templateName,
+        ecosystemVariant,
+        enabled: false
+      });
+
+      res.json({
+        message: `Template ${templateName} disabled from auto-scheduling`
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to disable template',
+        message: error.message
+      });
+    }
+  });
+
+  // Update template scheduling configuration
+  router.put('/auto-run/templates/:templateName/config', async (req, res) => {
+    try {
+      const { templateName } = req.params;
+      const { ecosystemVariant = 'default', ...updates } = req.body;
+
+      const template = await scheduler.updateTemplateConfig(templateName, ecosystemVariant, updates);
+
+      if (!template) {
+        return res.status(404).json({
+          error: 'Template not found in auto-run configuration'
+        });
+      }
+
+      io.emit('template-config-change', {
+        templateName,
+        ecosystemVariant,
+        ...updates
+      });
+
+      res.json({ template });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to update template config',
+        message: error.message
+      });
+    }
+  });
+
+  // Remove a template completely from auto-scheduling
+  router.delete('/auto-run/templates/:templateName', async (req, res) => {
+    try {
+      const { templateName } = req.params;
+      const { ecosystemVariant = 'default' } = req.query;
+
+      const removed = await scheduler.removeTemplate(templateName, ecosystemVariant);
+
+      if (!removed) {
+        return res.status(404).json({
+          error: 'Template not found in auto-run configuration'
+        });
+      }
+
+      io.emit('template-config-change', {
+        templateName,
+        ecosystemVariant,
+        removed: true
+      });
+
+      res.json({
+        message: `Template ${templateName} removed from auto-scheduling`
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to remove template',
+        message: error.message
       });
     }
   });
@@ -285,7 +537,17 @@ export function setupApiRoutes(app, evolutionManager, io) {
         health: '/api/health',
         templates: '/api/templates',
         runs: '/api/runs',
-        status: '/api/status'
+        status: '/api/status',
+        services: '/api/services',
+        autoRun: {
+          status: '/api/auto-run/status',
+          config: '/api/auto-run/config',
+          schedule: '/api/auto-run/schedule',
+          templates: '/api/auto-run/templates',
+          enable: 'POST /api/auto-run/enable',
+          disable: 'POST /api/auto-run/disable',
+          resume: 'POST /api/auto-run/resume'
+        }
       },
       websocket: 'Available on same port'
     });

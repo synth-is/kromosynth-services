@@ -53,6 +53,22 @@ export default {
       }
     },
     {
+      name: "kromosynth-evaluation-socket-server_features",
+      instances: 3,
+      exec_mode: "fork",
+      max_memory_restart: "2G",
+      increment_var: "PORT",
+      interpreter: PYTHON,
+      cwd: `${ROOT}/kromosynth-evaluate`,
+      script: "evaluation/unsupervised/features.py",
+      args: "--host 127.0.0.1",
+      cron_restart: "30 */2 * * *",
+      env: {
+        PORT: 61051,
+        TF_FORCE_GPU_ALLOW_GROWTH: true
+      }
+    },
+    {
       name: "kromosynth-evaluation-socket-server_quality_ref_features",
       instances: 3,
       exec_mode: "fork",
@@ -64,7 +80,7 @@ export default {
       args: "--host 127.0.0.1",
       cron_restart: "40 */2 * * *",
       env: {
-        PORT: 61051,
+        PORT: 62051,
         TF_FORCE_GPU_ALLOW_GROWTH: true
       }
     },

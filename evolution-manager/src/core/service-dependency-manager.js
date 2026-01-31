@@ -81,14 +81,18 @@ export class ServiceDependencyManager {
 
   /**
    * Generate ecosystem config with allocated ports for a specific run
+   * @returns {Object} { config, usedServiceTypes } - The config and a Set of service types used
    */
   generateRunEcosystemConfig(runId, ecosystemTemplate, portAllocation) {
     const config = JSON.parse(JSON.stringify(ecosystemTemplate.config)); // Deep clone
+    const usedServiceTypes = new Set();
 
     // Update each app with allocated ports and resolve paths
     config.apps.forEach(app => {
       const serviceName = this.mapAppToServiceType(app.name);
       if (serviceName && portAllocation.services[serviceName]) {
+        usedServiceTypes.add(serviceName); // Track which service types are actually used
+
         const allocatedPort = portAllocation.services[serviceName][0];
         app.env = app.env || {};
         const originalPort = app.env.PORT;
@@ -127,7 +131,7 @@ export class ServiceDependencyManager {
       }
     });
 
-    return config;
+    return { config, usedServiceTypes };
   }
 
   /**
@@ -234,8 +238,9 @@ export class ServiceDependencyManager {
         throw new Error(`No ecosystem template found for ${templateName}:${ecosystemVariant}`);
       }
 
-      // 3. Generate run-specific ecosystem config
-      const runEcosystemConfig = this.generateRunEcosystemConfig(runId, ecosystemTemplate, portAllocation);
+      // 3. Generate run-specific ecosystem config (also returns which service types are used)
+      const { config: runEcosystemConfig, usedServiceTypes } = this.generateRunEcosystemConfig(runId, ecosystemTemplate, portAllocation);
+      console.log(`📋 Used service types for run ${runId}:`, Array.from(usedServiceTypes));
 
       // 4. Write temporary ecosystem file in CommonJS format
       const tempEcosystemPath = path.join(process.cwd(), 'working', `ecosystem_${runId}.config.js`);
@@ -288,15 +293,19 @@ export class ServiceDependencyManager {
       const serviceResults = await Promise.all(servicePromises);
 
       // 6. Store service info
+      const serviceUrls = this.portManager.generateServiceUrls(runId, usedServiceTypes);
+      console.log(`📋 Generated service URLs for run ${runId}:`, JSON.stringify(serviceUrls, null, 2));
+
       const serviceInfo = {
         runId,
         templateName,
         ecosystemVariant,
         portAllocation,
+        usedServiceTypes: Array.from(usedServiceTypes), // Store for debugging
         services: serviceResults,
         ecosystemPath: tempEcosystemPath,
         startedAt: new Date().toISOString(),
-        serviceUrls: this.portManager.generateServiceUrls(runId)
+        serviceUrls
       };
 
       this.runServices.set(runId, serviceInfo);

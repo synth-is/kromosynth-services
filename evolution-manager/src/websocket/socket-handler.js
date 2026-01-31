@@ -2,6 +2,9 @@ export function setupWebSocket(io, evolutionManager) {
   // Set socket handler reference in evolution manager
   evolutionManager.setSocketHandler(io);
 
+  // Set up auto-run scheduler event forwarding
+  setupSchedulerEvents(io, evolutionManager.autoRunScheduler);
+
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 
@@ -10,6 +13,13 @@ export function setupWebSocket(io, evolutionManager) {
       message: 'Connected to Kromosynth Evolution Manager',
       timestamp: new Date().toISOString()
     });
+
+    // Send current auto-run scheduler status on connection
+    if (evolutionManager.autoRunScheduler) {
+      socket.emit('auto-run-status', {
+        status: evolutionManager.autoRunScheduler.getStatus()
+      });
+    }
 
     // Handle client requests for current status
     socket.on('get-runs-status', async () => {
@@ -57,6 +67,43 @@ export function setupWebSocket(io, evolutionManager) {
       socket.emit('pong', { timestamp: new Date().toISOString() });
     });
 
+    // ========================================
+    // Auto-Run Scheduler WebSocket Handlers
+    // ========================================
+
+    // Get current auto-run scheduler status
+    socket.on('get-auto-run-status', () => {
+      if (evolutionManager.autoRunScheduler) {
+        socket.emit('auto-run-status', {
+          status: evolutionManager.autoRunScheduler.getStatus()
+        });
+      }
+    });
+
+    // Get auto-run schedule info
+    socket.on('get-auto-run-schedule', async () => {
+      if (evolutionManager.autoRunScheduler) {
+        try {
+          const schedule = await evolutionManager.autoRunScheduler.getScheduleInfo();
+          socket.emit('auto-run-schedule', { schedule });
+        } catch (error) {
+          socket.emit('error', {
+            message: 'Failed to get schedule info',
+            error: error.message
+          });
+        }
+      }
+    });
+
+    // Get auto-run config
+    socket.on('get-auto-run-config', () => {
+      if (evolutionManager.autoRunScheduler) {
+        socket.emit('auto-run-config', {
+          config: evolutionManager.autoRunScheduler.getConfig()
+        });
+      }
+    });
+
     // Handle disconnection
     socket.on('disconnect', (reason) => {
       console.log(`🔌 Client disconnected: ${socket.id} (${reason})`);
@@ -88,13 +135,13 @@ export function setupWebSocket(io, evolutionManager) {
 async function getRecentLogs(runId, lines = 50) {
   const fs = await import('fs-extra');
   const path = await import('path');
-  
+
   const logTypes = ['out', 'err', 'combined'];
   const logs = {};
 
   for (const type of logTypes) {
     const logPath = path.join(process.cwd(), 'logs', `${runId}.${type}.log`);
-    
+
     try {
       if (await fs.pathExists(logPath)) {
         const content = await fs.readFile(logPath, 'utf8');
@@ -109,4 +156,37 @@ async function getRecentLogs(runId, lines = 50) {
   }
 
   return logs;
+}
+
+/**
+ * Set up event forwarding from AutoRunScheduler to Socket.IO
+ */
+function setupSchedulerEvents(io, scheduler) {
+  if (!scheduler) {
+    console.warn('⚠️ AutoRunScheduler not available for WebSocket events');
+    return;
+  }
+
+  // Forward all scheduler events to connected clients
+  const schedulerEvents = [
+    'auto-run-status-change',
+    'time-slice-started',
+    'time-slice-ending',
+    'time-slice-expired',
+    'run-paused',
+    'run-resumed',
+    'run-ended',
+    'template-config-change'
+  ];
+
+  for (const eventName of schedulerEvents) {
+    scheduler.on(eventName, (data) => {
+      io.emit(eventName, {
+        ...data,
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+
+  console.log('📅 Auto-run scheduler WebSocket events configured');
 }

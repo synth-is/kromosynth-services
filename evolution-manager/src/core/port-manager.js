@@ -151,9 +151,11 @@ export class PortManager {
   }
 
   /**
-   * Generate WebSocket URLs for services
+   * Generate WebSocket URLs for services based on which services are actually used
+   * @param {string} runId - Run identifier
+   * @param {Set<string>} usedServiceTypes - Set of service types actually used by this run (from ecosystem config)
    */
-  generateServiceUrls(runId) {
+  generateServiceUrls(runId, usedServiceTypes = null) {
     const allocation = this.allocatedRanges.get(runId);
     if (!allocation) {
       throw new Error(`No port allocation found for run ${runId}`);
@@ -168,17 +170,18 @@ export class PortManager {
       evaluationProjectionServers: allocation.services.evaluationProjection?.map(port => `ws://127.0.0.1:${port}`) || [],
     };
 
-    // CMA-MAE specific service URLs
-    if (allocation.services.clapFeatures) {
+    // CMA-MAE specific service URLs - only override if these services are actually used
+    // (usedServiceTypes tells us which services are in the ecosystem config)
+    if (usedServiceTypes?.has('clapFeatures')) {
       urls.evaluationFeatureServers = allocation.services.clapFeatures.map(port => `ws://127.0.0.1:${port}`);
     }
-    if (allocation.services.qdhfProjection) {
+    if (usedServiceTypes?.has('qdhfProjection')) {
       urls.evaluationProjectionServers = allocation.services.qdhfProjection.map(port => `ws://127.0.0.1:${port}`);
     }
-    if (allocation.services.qualityMusicality) {
+    if (usedServiceTypes?.has('qualityMusicality')) {
       urls.evaluationQualityServers = allocation.services.qualityMusicality.map(port => `ws://127.0.0.1:${port}`);
     }
-    if (allocation.services.pyribs) {
+    if (usedServiceTypes?.has('pyribs')) {
       urls.pyribsEndpoint = `http://127.0.0.1:${allocation.services.pyribs[0]}`;
     }
 
