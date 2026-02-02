@@ -47,10 +47,43 @@ module.exports = {
       }
     },
     {
-      name: 'kromosynth-render-float',
+      name: 'kromosynth-render-float-1',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
       script: 'node',
       args: 'socket-server-floating-points.js --port 3001',
+      env: {
+        NODE_ENV: 'production',
+        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
+        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
+      }
+    },
+    {
+      name: 'kromosynth-render-float-2',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
+      script: 'node',
+      args: 'socket-server-floating-points.js --port 3006',
+      env: {
+        NODE_ENV: 'production',
+        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
+        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
+      }
+    },
+    {
+      name: 'kromosynth-render-float-3',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
+      script: 'node',
+      args: 'socket-server-floating-points.js --port 3007',
+      env: {
+        NODE_ENV: 'production',
+        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
+        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
+      }
+    },
+    {
+      name: 'kromosynth-render-float-4',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
+      script: 'node',
+      args: 'socket-server-floating-points.js --port 3005',
       env: {
         NODE_ENV: 'production',
         GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
