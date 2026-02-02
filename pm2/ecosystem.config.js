@@ -50,7 +50,7 @@ module.exports = {
       name: 'kromosynth-render-float-1',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
       script: 'node',
-      args: '--max-old-space-size=4096 socket-server-floating-points.js --port 3001',
+      args: '--max-old-space-size=4096 --expose-gc socket-server-floating-points.js --port 3001',
       env: {
         NODE_ENV: 'production',
         GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
@@ -61,7 +61,7 @@ module.exports = {
       name: 'kromosynth-render-float-2',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
       script: 'node',
-      args: '--max-old-space-size=4096 socket-server-floating-points.js --port 3006',
+      args: '--max-old-space-size=4096 --expose-gc socket-server-floating-points.js --port 3006',
       env: {
         NODE_ENV: 'production',
         GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
@@ -72,7 +72,7 @@ module.exports = {
       name: 'kromosynth-render-float-3',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
       script: 'node',
-      args: '--max-old-space-size=4096 socket-server-floating-points.js --port 3007',
+      args: '--max-old-space-size=4096 --expose-gc socket-server-floating-points.js --port 3007',
       env: {
         NODE_ENV: 'production',
         GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
@@ -83,7 +83,7 @@ module.exports = {
       name: 'kromosynth-render-float-4',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
       script: 'node',
-      args: '--max-old-space-size=4096 socket-server-floating-points.js --port 3005',
+      args: '--max-old-space-size=4096 --expose-gc socket-server-floating-points.js --port 3005',
       env: {
         NODE_ENV: 'production',
         GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
