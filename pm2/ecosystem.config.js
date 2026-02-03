@@ -117,19 +117,32 @@ module.exports = {
         TF_FORCE_GPU_ALLOW_GROWTH: true
       }
     },
+    // Split into separate apps instead of instances:2 to avoid port binding conflicts during restarts.
+    // PM2's rolling restart tries to start new instances before killing old ones, causing "address already in use" errors.
     {
-      name: 'kromosynth-features-breeding',
+      name: 'kromosynth-features-breeding-1',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/evaluation/unsupervised',
       interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
       script: 'features.py',
       args: '--host 127.0.0.1 --models-path /Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/measurements/models',
-      instances: 2,
-      exec_mode: 'fork',
       max_memory_restart: '2G',
-      increment_var: 'PORT',
+      kill_timeout: 10000,
       env: {
         NODE_ENV: 'production',
         PORT: 61061
+      }
+    },
+    {
+      name: 'kromosynth-features-breeding-2',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/evaluation/unsupervised',
+      interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
+      script: 'features.py',
+      args: '--host 127.0.0.1 --models-path /Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/measurements/models',
+      max_memory_restart: '2G',
+      kill_timeout: 10000,
+      env: {
+        NODE_ENV: 'production',
+        PORT: 61062
       }
     },
     {
@@ -140,6 +153,7 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '4G',
+      kill_timeout: 5000,
       env: {
         NODE_ENV: 'production',
         PORT: 32051,
