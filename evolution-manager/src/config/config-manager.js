@@ -7,9 +7,128 @@ export class ConfigManager {
   constructor() {
     this.templatesDir = path.join(process.cwd(), 'templates');
     this.workingDir = path.join(process.cwd(), 'working');
-    
+    this.globalDefaultsPath = path.join(this.workingDir, 'global-defaults.json');
+
+    // Environment variable mappings for global user preferences
+    this.envMappings = {
+      'GLOBAL_USER_PREFERENCES_RATE': 'userPreferencesRate',
+      'GLOBAL_USER_PREFERENCES_SERVICE_URL': 'userPreferencesServiceUrl',
+      'GLOBAL_USER_PREFERENCES_STRATEGY': 'userPreferencesStrategy',
+      'GLOBAL_USER_PREFERENCES_USER_LIMIT': 'userPreferencesUserLimit',
+      'GLOBAL_USER_PREFERENCES_CACHE_SIZE': 'userPreferencesCacheSize',
+      'GLOBAL_USER_PREFERENCES_CACHE_REFRESH': 'userPreferencesCacheRefreshInterval',
+      'GLOBAL_USER_PREFERENCE_EVAL_ENABLED': 'userPreferenceEvaluationEnabled',
+      'GLOBAL_USER_PREFERENCE_EVAL_WEIGHT': 'userPreferenceEvaluationWeight',
+      'GLOBAL_USER_PREFERENCE_EVAL_MODE': 'userPreferenceEvaluationMode',
+      'GLOBAL_USER_PREFERENCE_SIMILARITY_THRESHOLD': 'userPreferenceSimilarityThreshold',
+      'GLOBAL_USER_PREFERENCE_AGGREGATION': 'userPreferenceAggregation'
+    };
+
     // Ensure working directory exists
     fs.ensureDirSync(this.workingDir);
+  }
+
+  /**
+   * Parse environment variable value to appropriate type
+   */
+  parseEnvValue(value) {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (!isNaN(value) && value !== '') {
+      return value.includes('.') ? parseFloat(value) : parseInt(value, 10);
+    }
+    return value;
+  }
+
+  /**
+   * Flatten nested userPreferences config to flat key format
+   */
+  flattenUserPreferencesConfig(config) {
+    const flattened = {};
+    if (config.userPreferences) {
+      const prefs = config.userPreferences;
+      if (prefs.rate !== undefined) flattened.userPreferencesRate = prefs.rate;
+      if (prefs.serviceUrl !== undefined) flattened.userPreferencesServiceUrl = prefs.serviceUrl;
+      if (prefs.strategy !== undefined) flattened.userPreferencesStrategy = prefs.strategy;
+      if (prefs.userLimit !== undefined) flattened.userPreferencesUserLimit = prefs.userLimit;
+      if (prefs.cacheSize !== undefined) flattened.userPreferencesCacheSize = prefs.cacheSize;
+      if (prefs.cacheRefreshInterval !== undefined) flattened.userPreferencesCacheRefreshInterval = prefs.cacheRefreshInterval;
+      if (prefs.evaluationEnabled !== undefined) flattened.userPreferenceEvaluationEnabled = prefs.evaluationEnabled;
+      if (prefs.evaluationWeight !== undefined) flattened.userPreferenceEvaluationWeight = prefs.evaluationWeight;
+      if (prefs.evaluationMode !== undefined) flattened.userPreferenceEvaluationMode = prefs.evaluationMode;
+      if (prefs.similarityThreshold !== undefined) flattened.userPreferenceSimilarityThreshold = prefs.similarityThreshold;
+      if (prefs.aggregation !== undefined) flattened.userPreferenceAggregation = prefs.aggregation;
+    }
+    // Also copy any top-level keys that are already flattened
+    for (const [key, value] of Object.entries(config)) {
+      if (key !== 'userPreferences' && value !== undefined) {
+        flattened[key] = value;
+      }
+    }
+    return flattened;
+  }
+
+  /**
+   * Load global defaults from file and environment variables
+   * Priority: Environment variables override file settings
+   */
+  async loadGlobalDefaults() {
+    const defaults = {};
+
+    // 1. Load from global-defaults.json if exists
+    if (await fs.pathExists(this.globalDefaultsPath)) {
+      try {
+        const fileDefaults = await fs.readJson(this.globalDefaultsPath);
+        Object.assign(defaults, this.flattenUserPreferencesConfig(fileDefaults));
+        console.log('📋 Loaded global defaults from:', this.globalDefaultsPath);
+      } catch (error) {
+        console.error('Failed to load global-defaults.json:', error.message);
+      }
+    }
+
+    // 2. Override with environment variables
+    for (const [envVar, configKey] of Object.entries(this.envMappings)) {
+      if (process.env[envVar] !== undefined) {
+        defaults[configKey] = this.parseEnvValue(process.env[envVar]);
+      }
+    }
+
+    return defaults;
+  }
+
+  /**
+   * Save global defaults to file
+   * Persists to working/global-defaults.json
+   */
+  async saveGlobalDefaults(defaults) {
+    // Convert flat format to nested format for cleaner JSON
+    const nested = {
+      userPreferences: {}
+    };
+
+    const keyMappings = {
+      userPreferencesRate: 'rate',
+      userPreferencesServiceUrl: 'serviceUrl',
+      userPreferencesStrategy: 'strategy',
+      userPreferencesUserLimit: 'userLimit',
+      userPreferencesCacheSize: 'cacheSize',
+      userPreferencesCacheRefreshInterval: 'cacheRefreshInterval',
+      userPreferenceEvaluationEnabled: 'evaluationEnabled',
+      userPreferenceEvaluationWeight: 'evaluationWeight',
+      userPreferenceEvaluationMode: 'evaluationMode',
+      userPreferenceSimilarityThreshold: 'similarityThreshold',
+      userPreferenceAggregation: 'aggregation'
+    };
+
+    for (const [flatKey, nestedKey] of Object.entries(keyMappings)) {
+      if (defaults[flatKey] !== undefined) {
+        nested.userPreferences[nestedKey] = defaults[flatKey];
+      }
+    }
+
+    await fs.writeJson(this.globalDefaultsPath, nested, { spaces: 2 });
+    console.log('💾 Saved global defaults to:', this.globalDefaultsPath);
+    return nested;
   }
 
   /**
@@ -205,9 +324,14 @@ export class ConfigManager {
     const runDir = path.join(this.workingDir, runId);
     await fs.ensureDir(runDir);
 
+    // Load global defaults and merge with request-specific options
+    // Priority: request options > global defaults
+    const globalDefaults = await this.loadGlobalDefaults();
+    const mergedOptions = { ...globalDefaults, ...options };
+
     // Apply any runtime options to the configuration
-    const workingConfig = this.applyRuntimeOptions(templateConfig, options);
-    
+    const workingConfig = this.applyRuntimeOptions(templateConfig, mergedOptions);
+
     // Create working configuration files
     const configPaths = await this.writeWorkingConfigs(workingConfig, runDir, runId);
 
@@ -249,6 +373,52 @@ export class ConfigManager {
     // Apply output directory
     if (workingConfig.evolutionRunConfig) {
       workingConfig.evolutionRunConfig.outputDir = path.join(process.cwd(), 'working', options.runId || ulid(), 'output');
+    }
+
+    // Apply user preferences configuration overrides
+    if (workingConfig.evolutionRunConfig?.classifiers?.[0]?.classConfigurations?.[0]) {
+      const classConfig = workingConfig.evolutionRunConfig.classifiers[0].classConfigurations[0];
+
+      // User preferences parent selection
+      if (options.userPreferencesRate !== undefined) {
+        classConfig.userPreferencesRate = options.userPreferencesRate;
+      }
+      if (options.userPreferencesServiceUrl) {
+        classConfig.userPreferencesServiceUrl = options.userPreferencesServiceUrl;
+      }
+      if (options.userPreferencesStrategy) {
+        if (!classConfig.userPreferencesConfig) classConfig.userPreferencesConfig = {};
+        classConfig.userPreferencesConfig.strategy = options.userPreferencesStrategy;
+      }
+      if (options.userPreferencesUserLimit !== undefined) {
+        if (!classConfig.userPreferencesConfig) classConfig.userPreferencesConfig = {};
+        classConfig.userPreferencesConfig.userLimit = options.userPreferencesUserLimit;
+      }
+      if (options.userPreferencesCacheSize !== undefined) {
+        if (!classConfig.userPreferencesConfig) classConfig.userPreferencesConfig = {};
+        classConfig.userPreferencesConfig.cacheSize = options.userPreferencesCacheSize;
+      }
+      if (options.userPreferencesCacheRefreshInterval !== undefined) {
+        if (!classConfig.userPreferencesConfig) classConfig.userPreferencesConfig = {};
+        classConfig.userPreferencesConfig.cacheRefreshInterval = options.userPreferencesCacheRefreshInterval;
+      }
+
+      // User preferences evaluation
+      if (options.userPreferenceEvaluationEnabled !== undefined) {
+        classConfig.userPreferenceEvaluationEnabled = options.userPreferenceEvaluationEnabled;
+      }
+      if (options.userPreferenceEvaluationWeight !== undefined) {
+        classConfig.userPreferenceEvaluationWeight = options.userPreferenceEvaluationWeight;
+      }
+      if (options.userPreferenceEvaluationMode) {
+        classConfig.userPreferenceEvaluationMode = options.userPreferenceEvaluationMode;
+      }
+      if (options.userPreferenceSimilarityThreshold !== undefined) {
+        classConfig.userPreferenceSimilarityThreshold = options.userPreferenceSimilarityThreshold;
+      }
+      if (options.userPreferenceAggregation) {
+        classConfig.userPreferenceAggregation = options.userPreferenceAggregation;
+      }
     }
 
     return workingConfig;

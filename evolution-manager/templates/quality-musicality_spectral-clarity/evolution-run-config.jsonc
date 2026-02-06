@@ -7,7 +7,8 @@
   "batchSize": 64,
   "maxNumberOfParents": 1,
   "terminationCondition": {
-    "qdScoreGradientThreshold": 0.001
+    "qdScoreGradientThreshold": 0.001,
+    "numberOfEvals": 1000000
   },
   "gradientWindowSize": 10,
   "scoreProportionalToNumberOfEvalsTerminationCondition": false,

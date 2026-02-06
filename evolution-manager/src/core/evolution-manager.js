@@ -7,6 +7,7 @@ import { ulid } from 'ulid';
 import { ConfigManager } from '../config/config-manager.js';
 import { ServiceDependencyManager } from './service-dependency-manager.js';
 import { AutoRunScheduler } from './auto-run-scheduler.js';
+import { SyncManager } from './sync-manager.js';
 
 export class EvolutionManager {
   constructor() {
@@ -18,6 +19,9 @@ export class EvolutionManager {
 
     // Auto-run scheduler
     this.autoRunScheduler = new AutoRunScheduler(this);
+
+    // Data sync manager
+    this.syncManager = new SyncManager(this);
 
     // Path for persisting run state across restarts
     this.runStatePath = path.join(process.cwd(), 'working', 'run-state.json');
@@ -128,6 +132,9 @@ export class EvolutionManager {
 
       // Initialize auto-run scheduler after PM2 is connected
       await this.autoRunScheduler.initialize();
+
+      // Initialize sync manager
+      await this.syncManager.initialize();
 
     } catch (error) {
       console.error('❌ Failed to connect to PM2:', error);
@@ -355,8 +362,13 @@ export class EvolutionManager {
         this.socketHandler.emit('run-started', { runId, templateName, ecosystemVariant, timestamp });
       }
 
+      // Register run for data sync (non-blocking)
+      this.syncManager.registerRun(runId, runData, options.sync || {}).catch(err => {
+        console.warn(`⚠️ Failed to register sync for run ${runId}: ${err.message}`);
+      });
+
       return runId;
-      
+
     } catch (error) {
       console.error(`❌ Failed to start evolution run ${runId}:`, error);
       
@@ -410,6 +422,16 @@ export class EvolutionManager {
       // Emit run-stopped event to connected clients
       if (this.socketHandler) {
         this.socketHandler.emit('run-stopped', { runId, timestamp: run.stoppedAt });
+      }
+
+      // Final sync before stopping (non-blocking, but await briefly)
+      if (this.syncManager) {
+        try {
+          await this.syncManager.triggerSync(runId, 'stop');
+        } catch (err) {
+          console.warn(`⚠️ Final sync failed for run ${runId}: ${err.message}`);
+        }
+        this.syncManager.unregisterRun(runId);
       }
 
       console.log(`✅ Evolution run ${runId} stopped successfully`);
@@ -476,6 +498,13 @@ export class EvolutionManager {
       // Emit run-paused event to connected clients
       if (this.socketHandler) {
         this.socketHandler.emit('run-paused', { runId, timestamp: run.pausedAt });
+      }
+
+      // Sync before pausing (flush latest data)
+      if (this.syncManager) {
+        this.syncManager.triggerSync(runId, 'pause').catch(err => {
+          console.warn(`⚠️ Sync on pause failed for run ${runId}: ${err.message}`);
+        });
       }
 
       console.log(`✅ Evolution run ${runId} paused successfully`);
@@ -916,6 +945,15 @@ export class EvolutionManager {
 
       this.saveRunState();
 
+      // Final sync on completion/failure
+      if (this.syncManager) {
+        this.syncManager.triggerSync(runId, reason).catch(err => {
+          console.warn(`⚠️ Final sync on ${reason} failed for run ${runId}: ${err.message}`);
+        }).finally(() => {
+          this.syncManager.unregisterRun(runId);
+        });
+      }
+
       // Emit WebSocket event
       if (this.socketHandler) {
         this.socketHandler.emit('run-ended', { runId, reason, exitCode });
@@ -944,6 +982,11 @@ export class EvolutionManager {
     // Shutdown auto-run scheduler first
     if (this.autoRunScheduler) {
       await this.autoRunScheduler.shutdown();
+    }
+
+    // Shutdown sync manager
+    if (this.syncManager) {
+      await this.syncManager.shutdown();
     }
 
     if (this.isConnected) {

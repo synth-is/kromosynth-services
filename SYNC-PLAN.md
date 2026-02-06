@@ -399,3 +399,54 @@ curl http://localhost:4004/evoruns/{syncedRunFolder}/genome/{ulid}
 - [wstunnel](https://github.com/erebe/wstunnel) - SSH-over-WebSocket for firewall traversal
 - [SQLite Sync (sqliteai)](https://github.com/sqliteai/sqlite-sync) - CRDT-based sync (requires SQLite Cloud, not self-hostable)
 - [PowerSync](https://www.powersync.com) - Postgres-to-SQLite sync (different use case)
+
+
+
+## All implementation is complete. Here's a summary of what was built:
+
+**Summary of Changes**
+
+**New file:**
+- `kromosynth-services/evolution-manager/src/core/sync-manager.js` (~450 lines)
+  - `SyncManager` class that orchestrates data sync from QD workers to central
+  - **sqlite3_rsync** execution for efficient binary-diff SQLite database sync over SSH
+  - **REST API client** for uploading analysis files with API key authentication
+  - Periodic sync with configurable intervals
+  - Lifecycle hooks: sync on start, pause, stop, completion
+  - Persistent sync state (`working/sync-state.json`) for cursor tracking across restarts
+  - Error handling with consecutive error counting and auto-pause after max retries
+  - WebSocket event emission for real-time sync status updates
+
+**Modified files:**
+- `kromosynth-services/evolution-manager/src/core/evolution-manager.js`
+  - Imports and instantiates SyncManager
+  - Initializes during init()
+  - Calls `registerRun()` after `startRun()`
+  - Calls `triggerSync('stop')` + `unregisterRun()` during `stopRun()`
+  - Calls `triggerSync('pause')` during `pauseRun()`
+  - Calls `triggerSync(reason)` + `unregisterRun()` on process exit events
+  - Shuts down SyncManager during shutdown()
+- `kromosynth-services/evolution-manager/src/api/routes.js`
+  - Added 4 sync endpoints: GET /api/sync/status, GET /api/sync/:runId/status, POST /api/sync/:runId/trigger, PUT /api/sync/config
+  - Updated root route documentation
+- `kromosynth-services/evolution-manager/.env.example`
+  - Added full sync configuration section with all env vars documented
+- `kromosynth-evoruns/evorun-browser-server.js`
+  - Added syncDirectory and syncApiKeys to CONFIG
+  - Added syncAuth middleware for API key validation
+  - Added POST /api/sync/register/:runId for run registration
+  - Added GET /api/sync/analysis/:runId/list for file listing
+  - Added POST /api/sync/analysis/:runId for file upload (supports both raw and multipart)
+  - Simple multipart parser (parseMultipartSync) to avoid new dependencies
+  - Updated findEvorunPath() to also search the sync directory
+  - Updated /evoruns/summary to include runs from sync directory
+  - Updated health endpoint to show sync config status
+- `kromosynth-services/SYNC-PLAN.md` (committed earlier)
+
+**To use:**
+1. Install SQLite 3.50.0+ on worker and central machines
+2. Set up SSH key-based auth from worker to central
+3. Configure .env in evolution-manager with SYNC_ENABLED=true, SYNC_CENTRAL_HOST, SYNC_CENTRAL_PATH
+4. Configure SYNC_API_KEYS in kromosynth-evoruns on the central
+5. Set SYNC_EVORUNS_SERVICE_URL and SYNC_API_KEY in evolution-manager
+6. Start evolution runs - sync happens automatically every 5 minutes

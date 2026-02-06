@@ -522,6 +522,109 @@ export function setupApiRoutes(app, evolutionManager, io) {
     }
   });
 
+  // ========================================
+  // Data Sync Endpoints
+  // ========================================
+
+  const syncManager = evolutionManager.syncManager;
+
+  // Get sync status for all runs
+  router.get('/sync/status', (req, res) => {
+    try {
+      const status = syncManager.getStatus();
+      res.json({ status });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to get sync status',
+        message: error.message
+      });
+    }
+  });
+
+  // Get sync status for a specific run
+  router.get('/sync/:runId/status', (req, res) => {
+    try {
+      const status = syncManager.getRunStatus(req.params.runId);
+      if (!status) {
+        return res.status(404).json({ error: 'No sync data found for this run' });
+      }
+      res.json({ status });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to get sync status',
+        message: error.message
+      });
+    }
+  });
+
+  // Manually trigger sync for a specific run
+  router.post('/sync/:runId/trigger', async (req, res) => {
+    try {
+      const { types } = req.body || {};
+      await syncManager.triggerSync(req.params.runId, 'manual');
+      res.json({ message: 'Sync triggered', runId: req.params.runId });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to trigger sync',
+        message: error.message
+      });
+    }
+  });
+
+  // Update global sync configuration
+  router.put('/sync/config', (req, res) => {
+    try {
+      const config = syncManager.updateConfig(req.body);
+      io.emit('sync-config-updated', config);
+      res.json({ config });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to update sync config',
+        message: error.message
+      });
+    }
+  });
+
+  // ========================================
+  // Global Configuration Defaults Endpoints
+  // ========================================
+
+  const configManager = evolutionManager.configManager;
+
+  // Get current global defaults
+  router.get('/config/global-defaults', async (req, res) => {
+    try {
+      const defaults = await configManager.loadGlobalDefaults();
+      res.json(defaults);
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to load global defaults',
+        message: error.message
+      });
+    }
+  });
+
+  // Update global defaults (persists to global-defaults.json)
+  router.put('/config/global-defaults', async (req, res) => {
+    try {
+      const saved = await configManager.saveGlobalDefaults(req.body);
+      const defaults = await configManager.loadGlobalDefaults();
+
+      io.emit('global-defaults-updated', defaults);
+
+      res.json({
+        success: true,
+        defaults,
+        message: 'Global defaults updated successfully'
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to save global defaults',
+        message: error.message
+      });
+    }
+  });
+
   // Mount router
   app.use('/api', router);
 
@@ -539,6 +642,12 @@ export function setupApiRoutes(app, evolutionManager, io) {
         runs: '/api/runs',
         status: '/api/status',
         services: '/api/services',
+        config: {
+          globalDefaults: {
+            get: 'GET /api/config/global-defaults',
+            update: 'PUT /api/config/global-defaults'
+          }
+        },
         autoRun: {
           status: '/api/auto-run/status',
           config: '/api/auto-run/config',
@@ -547,6 +656,12 @@ export function setupApiRoutes(app, evolutionManager, io) {
           enable: 'POST /api/auto-run/enable',
           disable: 'POST /api/auto-run/disable',
           resume: 'POST /api/auto-run/resume'
+        },
+        sync: {
+          status: 'GET /api/sync/status',
+          runStatus: 'GET /api/sync/:runId/status',
+          trigger: 'POST /api/sync/:runId/trigger',
+          config: 'PUT /api/sync/config'
         }
       },
       websocket: 'Available on same port'
