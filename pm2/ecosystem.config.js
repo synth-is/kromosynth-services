@@ -161,6 +161,15 @@ module.exports = {
       }
     },
     {
+      name: 'kromosynth-vi',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-vi',
+      script: 'npm',
+      args: 'run start',
+      env: {
+        NODE_ENV: 'production'
+      }
+    },
+    {
       name: 'kromosynth-evoruns',
       cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evoruns',
       script: 'npm',
