@@ -175,7 +175,18 @@ module.exports = {
       script: 'npm',
       args: 'run start',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 4004
+      }
+    },
+    {
+      name: 'umami',
+      cwd: '/Users/bjornpjo/Developer/apps/synth.is/umami',
+      script: 'pnpm',
+      args: 'start',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3100
       }
     }
   ]
