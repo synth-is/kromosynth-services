@@ -35,4 +35,4 @@ echo "Filtering for: user preferences, evaluation augmentation, MQ, parent selec
 echo "---"
 
 tail -f "$LOG_FILE" | grep --line-buffered -iE \
-  "User Preferences Cache|User Preference Eval|user preferences|userPrefs:|Parent selection:|user_preferences|MQ\]|Cached .* genomes from|userPreferenceScore|maxNumberOfParents|numberOfParentGenomes"
+  "User Preferences Cache|User Preference Eval|\[UserPrefEval\]|user preferences|userPrefs:|Parent selection:|user_preferences|MQ\]|Cached .* genomes from|numberOfParentGenomes"
