@@ -8,11 +8,11 @@
 //
 // Staggered cron restarts (every 2 hours) for stateless services to prevent ECONNRESET storms.
 
-// Environment variables for portability:
-//   KROMOSYNTH_ROOT   - Base path for kromosynth repos (default: /Users/bjornpjo/Developer/apps/synth.is)
-//   KROMOSYNTH_NODE   - Path to node interpreter (default: uses nvm)
+// Environment variables for portability across machines:
+//   KROMOSYNTH_ROOT   - Base path containing kromosynth repos (REQUIRED on new machines)
+//   KROMOSYNTH_NODE   - Path to node interpreter (default: process.execPath)
 //   KROMOSYNTH_PYTHON - Path to python interpreter (default: ${ROOT}/kromosynth-evaluate/.venv/bin/python3)
-//   KROMOSYNTH_VENDOR - Path to vendor directory (default: /Users/bjornpjo/Developer/vendor)
+//   KROMOSYNTH_VENDOR - Path to vendor directory (default: sibling of ROOT)
 
 const ROOT = process.env.KROMOSYNTH_ROOT || '/Users/bjornpjo/Developer/apps/synth.is';
 const VENDOR = process.env.KROMOSYNTH_VENDOR || '/Users/bjornpjo/Developer/vendor';

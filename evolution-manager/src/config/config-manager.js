@@ -9,6 +9,11 @@ export class ConfigManager {
     this.workingDir = path.join(process.cwd(), 'working');
     this.globalDefaultsPath = path.join(this.workingDir, 'global-defaults.json');
 
+    // Path placeholder resolution:
+    //   Templates use {{PLACEHOLDER}} tokens for portability across machines.
+    //   Resolved at load time from environment variables with sensible defaults.
+    this.pathPlaceholders = this._buildPathPlaceholders();
+
     // Environment variable mappings for global user preferences
     this.envMappings = {
       'GLOBAL_USER_PREFERENCES_RATE': 'userPreferencesRate',
@@ -26,6 +31,95 @@ export class ConfigManager {
 
     // Ensure working directory exists
     fs.ensureDirSync(this.workingDir);
+  }
+
+  /**
+   * Build path placeholder map from environment variables with defaults.
+   *
+   * Supported placeholders (in template JSONC & ecosystem configs):
+   *   {{KROMOSYNTH_ROOT}}   – base directory containing kromosynth repos
+   *   {{KROMOSYNTH_VENDOR}} – vendor directory (models, tfjs, etc.)
+   *   {{HOME}}              – user home directory
+   *
+   * These are resolved once at construction and applied when loading templates.
+   */
+  _buildPathPlaceholders() {
+    const home = process.env.HOME || process.env.USERPROFILE || '/tmp';
+
+    // Derive KROMOSYNTH_ROOT: env var, or infer from cwd (evolution-manager lives
+    // inside kromosynth-services which is a sibling of other repos)
+    const root = process.env.KROMOSYNTH_ROOT
+      || path.resolve(process.cwd(), '../..');
+
+    const vendor = process.env.KROMOSYNTH_VENDOR
+      || path.join(path.dirname(root), 'vendor');
+
+    const placeholders = {
+      'KROMOSYNTH_ROOT': root,
+      'KROMOSYNTH_VENDOR': vendor,
+      'HOME': home,
+    };
+
+    console.log('📂 Path placeholders:');
+    for (const [key, val] of Object.entries(placeholders)) {
+      console.log(`   {{${key}}} → ${val}`);
+    }
+
+    return placeholders;
+  }
+
+  /**
+   * Replace all {{PLACEHOLDER}} tokens in a JSON-compatible value tree.
+   * Works recursively on objects, arrays, and strings.
+   */
+  resolvePathPlaceholders(value) {
+    if (typeof value === 'string') {
+      let resolved = value;
+      for (const [placeholder, replacement] of Object.entries(this.pathPlaceholders)) {
+        resolved = resolved.replaceAll(`{{${placeholder}}}`, replacement);
+      }
+      return resolved;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => this.resolvePathPlaceholders(item));
+    }
+    if (value !== null && typeof value === 'object') {
+      const result = {};
+      for (const [key, val] of Object.entries(value)) {
+        result[key] = this.resolvePathPlaceholders(val);
+      }
+      return result;
+    }
+    return value; // numbers, booleans, null
+  }
+
+  /**
+   * Convert absolute paths in a config back to placeholder tokens.
+   * Useful when persisting configs that should remain portable.
+   * Longest match first to avoid partial replacements.
+   */
+  convertToPlaceholders(value) {
+    if (typeof value === 'string') {
+      let converted = value;
+      // Sort by path length descending so longer (more specific) paths match first
+      const sorted = Object.entries(this.pathPlaceholders)
+        .sort(([, a], [, b]) => b.length - a.length);
+      for (const [placeholder, absPath] of sorted) {
+        converted = converted.replaceAll(absPath, `{{${placeholder}}}`);
+      }
+      return converted;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => this.convertToPlaceholders(item));
+    }
+    if (value !== null && typeof value === 'object') {
+      const result = {};
+      for (const [key, val] of Object.entries(value)) {
+        result[key] = this.convertToPlaceholders(val);
+      }
+      return result;
+    }
+    return value;
   }
 
   /**
@@ -300,14 +394,14 @@ export class ConfigManager {
     const evolutionRunConfigPath = path.join(templateDir, 'evolution-run-config.jsonc');
     if (await fs.pathExists(evolutionRunConfigPath)) {
       const content = await fs.readFile(evolutionRunConfigPath, 'utf8');
-      configFiles.evolutionRunConfig = parseJSONC(content);
+      configFiles.evolutionRunConfig = this.resolvePathPlaceholders(parseJSONC(content));
     }
 
     // Load hyperparameters
     const hyperparametersPath = path.join(templateDir, 'evolutionary-hyperparameters.jsonc');
     if (await fs.pathExists(hyperparametersPath)) {
       const content = await fs.readFile(hyperparametersPath, 'utf8');
-      configFiles.hyperparameters = parseJSONC(content);
+      configFiles.hyperparameters = this.resolvePathPlaceholders(parseJSONC(content));
     }
 
     return {
