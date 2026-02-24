@@ -157,7 +157,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 32051,
-        CLAP_DEVICE: 'mps'
+        CLAP_DEVICE: 'mps',
+        PYTORCH_ENABLE_MPS_FALLBACK: '1'
       }
     },
     {

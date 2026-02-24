@@ -99,7 +99,7 @@ const SERVICE_TEMPLATES = {
     staggerMinute: STAGGER_MINUTES.featureClap,
     basePort: 32051,
     usePython: true,
-    extraEnv: { CLAP_DEVICE: 'mps' }
+    extraEnv: { CLAP_DEVICE: 'mps', PYTORCH_ENABLE_MPS_FALLBACK: '1' }
   },
 
   genericFeatures: {
