@@ -230,6 +230,17 @@ export class EvolutionManager {
       if (restoredCount > 0) {
         console.log(`📋 Restored ${restoredCount} runs (${activeCount} still active)`);
       }
+
+      // Clean up orphaned service processes for runs that are no longer running
+      const stoppedRunIds = Array.from(this.runs.entries())
+        .filter(([, run]) => run.status !== 'running')
+        .map(([runId]) => runId);
+
+      for (const runId of stoppedRunIds) {
+        this.serviceDependencyManager.stopServicesForRun(runId).catch(err => {
+          // Silently ignore — most runs won't have orphans
+        });
+      }
     } catch (error) {
       console.warn('⚠️ Failed to load run state:', error.message);
     }
@@ -962,6 +973,11 @@ export class EvolutionManager {
         run.failedAt = new Date().toISOString();
         run.exitCode = exitCode;
       }
+
+      // Clean up service dependencies (non-blocking)
+      this.serviceDependencyManager.stopServicesForRun(runId).catch(err => {
+        console.warn(`⚠️ Failed to stop services on ${reason} for run ${runId}: ${err.message}`);
+      });
 
       this.saveRunState();
 
