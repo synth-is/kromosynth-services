@@ -29,6 +29,19 @@ export class ConfigManager {
       'GLOBAL_USER_PREFERENCE_AGGREGATION': 'userPreferenceAggregation'
     };
 
+    // Environment variable mappings for global MQ configuration overrides
+    this.mqEnvMappings = {
+      'GLOBAL_MQ_ENABLED': 'mqEnabled',
+      'GLOBAL_MQ_BASE_URL': 'mqBaseUrl',
+      'GLOBAL_MQ_CHECK_FREQUENCY': 'mqCheckFrequency',
+      'GLOBAL_MQ_MAX_REQUESTS_PER_CHECK': 'mqMaxRequestsPerCheck',
+      'GLOBAL_MQ_ANCESTRY_DEPTH': 'mqAncestryDepth',
+      'GLOBAL_MQ_INCLUDE_PARENT_GENOMES': 'mqIncludeParentGenomes',
+      'GLOBAL_MQ_INCLUDE_SIBLINGS': 'mqIncludeSiblings',
+      'GLOBAL_MQ_MAX_SIBLINGS': 'mqMaxSiblings',
+      'GLOBAL_MQ_INCLUDE_USER_PREFERENCE_ANCESTORS': 'mqIncludeUserPreferenceAncestors'
+    };
+
     // Ensure working directory exists
     fs.ensureDirSync(this.workingDir);
   }
@@ -135,7 +148,7 @@ export class ConfigManager {
   }
 
   /**
-   * Flatten nested userPreferences config to flat key format
+   * Flatten nested config sections (userPreferences, mqConfig) to flat key format
    */
   flattenUserPreferencesConfig(config) {
     const flattened = {};
@@ -153,9 +166,21 @@ export class ConfigManager {
       if (prefs.similarityThreshold !== undefined) flattened.userPreferenceSimilarityThreshold = prefs.similarityThreshold;
       if (prefs.aggregation !== undefined) flattened.userPreferenceAggregation = prefs.aggregation;
     }
+    if (config.mqConfig) {
+      const mq = config.mqConfig;
+      if (mq.enabled !== undefined) flattened.mqEnabled = mq.enabled;
+      if (mq.baseUrl !== undefined) flattened.mqBaseUrl = mq.baseUrl;
+      if (mq.checkFrequency !== undefined) flattened.mqCheckFrequency = mq.checkFrequency;
+      if (mq.maxRequestsPerCheck !== undefined) flattened.mqMaxRequestsPerCheck = mq.maxRequestsPerCheck;
+      if (mq.ancestryDepth !== undefined) flattened.mqAncestryDepth = mq.ancestryDepth;
+      if (mq.includeParentGenomes !== undefined) flattened.mqIncludeParentGenomes = mq.includeParentGenomes;
+      if (mq.includeSiblings !== undefined) flattened.mqIncludeSiblings = mq.includeSiblings;
+      if (mq.maxSiblings !== undefined) flattened.mqMaxSiblings = mq.maxSiblings;
+      if (mq.includeUserPreferenceAncestors !== undefined) flattened.mqIncludeUserPreferenceAncestors = mq.includeUserPreferenceAncestors;
+    }
     // Also copy any top-level keys that are already flattened
     for (const [key, value] of Object.entries(config)) {
-      if (key !== 'userPreferences' && value !== undefined) {
+      if (key !== 'userPreferences' && key !== 'mqConfig' && value !== undefined) {
         flattened[key] = value;
       }
     }
@@ -180,8 +205,15 @@ export class ConfigManager {
       }
     }
 
-    // 2. Override with environment variables
+    // 2. Override with environment variables (user preferences)
     for (const [envVar, configKey] of Object.entries(this.envMappings)) {
+      if (process.env[envVar] !== undefined) {
+        defaults[configKey] = this.parseEnvValue(process.env[envVar]);
+      }
+    }
+
+    // 3. Load MQ configuration overrides from environment variables
+    for (const [envVar, configKey] of Object.entries(this.mqEnvMappings)) {
       if (process.env[envVar] !== undefined) {
         defaults[configKey] = this.parseEnvValue(process.env[envVar]);
       }
@@ -197,10 +229,11 @@ export class ConfigManager {
   async saveGlobalDefaults(defaults) {
     // Convert flat format to nested format for cleaner JSON
     const nested = {
-      userPreferences: {}
+      userPreferences: {},
+      mqConfig: {}
     };
 
-    const keyMappings = {
+    const userPrefsKeyMappings = {
       userPreferencesRate: 'rate',
       userPreferencesServiceUrl: 'serviceUrl',
       userPreferencesStrategy: 'strategy',
@@ -214,11 +247,32 @@ export class ConfigManager {
       userPreferenceAggregation: 'aggregation'
     };
 
-    for (const [flatKey, nestedKey] of Object.entries(keyMappings)) {
+    for (const [flatKey, nestedKey] of Object.entries(userPrefsKeyMappings)) {
       if (defaults[flatKey] !== undefined) {
         nested.userPreferences[nestedKey] = defaults[flatKey];
       }
     }
+
+    const mqKeyMappings = {
+      mqEnabled: 'enabled',
+      mqBaseUrl: 'baseUrl',
+      mqCheckFrequency: 'checkFrequency',
+      mqMaxRequestsPerCheck: 'maxRequestsPerCheck',
+      mqAncestryDepth: 'ancestryDepth',
+      mqIncludeParentGenomes: 'includeParentGenomes',
+      mqIncludeSiblings: 'includeSiblings',
+      mqMaxSiblings: 'maxSiblings',
+      mqIncludeUserPreferenceAncestors: 'includeUserPreferenceAncestors'
+    };
+
+    for (const [flatKey, nestedKey] of Object.entries(mqKeyMappings)) {
+      if (defaults[flatKey] !== undefined) {
+        nested.mqConfig[nestedKey] = defaults[flatKey];
+      }
+    }
+
+    // Remove empty sections
+    if (Object.keys(nested.mqConfig).length === 0) delete nested.mqConfig;
 
     await fs.writeJson(this.globalDefaultsPath, nested, { spaces: 2 });
     console.log('💾 Saved global defaults to:', this.globalDefaultsPath);
@@ -512,6 +566,39 @@ export class ConfigManager {
       }
       if (options.userPreferenceAggregation) {
         classConfig.userPreferenceAggregation = options.userPreferenceAggregation;
+      }
+    }
+
+    // Apply MQ configuration overrides
+    if (workingConfig.evolutionRunConfig?.mqConfig) {
+      const mqConfig = workingConfig.evolutionRunConfig.mqConfig;
+
+      if (options.mqEnabled !== undefined) {
+        mqConfig.enabled = options.mqEnabled;
+      }
+      if (options.mqBaseUrl) {
+        mqConfig.baseUrl = options.mqBaseUrl;
+      }
+      if (options.mqCheckFrequency !== undefined) {
+        mqConfig.checkFrequency = options.mqCheckFrequency;
+      }
+      if (options.mqMaxRequestsPerCheck !== undefined) {
+        mqConfig.maxRequestsPerCheck = options.mqMaxRequestsPerCheck;
+      }
+      if (options.mqAncestryDepth !== undefined) {
+        mqConfig.ancestryDepth = options.mqAncestryDepth;
+      }
+      if (options.mqIncludeParentGenomes !== undefined) {
+        mqConfig.includeParentGenomes = options.mqIncludeParentGenomes;
+      }
+      if (options.mqIncludeSiblings !== undefined) {
+        mqConfig.includeSiblings = options.mqIncludeSiblings;
+      }
+      if (options.mqMaxSiblings !== undefined) {
+        mqConfig.maxSiblings = options.mqMaxSiblings;
+      }
+      if (options.mqIncludeUserPreferenceAncestors !== undefined) {
+        mqConfig.includeUserPreferenceAncestors = options.mqIncludeUserPreferenceAncestors;
       }
     }
 
