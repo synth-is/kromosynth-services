@@ -562,11 +562,11 @@ export class EvolutionManager {
         }
       }
 
-      // Step 2: Update the working config with new service endpoints
+      // Step 2: Update the working config with new service endpoints and global overrides
       const runDir = path.join(process.cwd(), 'working', runId);
       const evolutionRunConfigPath = path.join(runDir, 'evolution-run-config.jsonc');
 
-      if (serviceInfo && await fs.pathExists(evolutionRunConfigPath)) {
+      if (await fs.pathExists(evolutionRunConfigPath)) {
         const configContent = await fs.readFile(evolutionRunConfigPath, 'utf8');
         let evolutionRunConfig;
         try {
@@ -576,13 +576,23 @@ export class EvolutionManager {
           evolutionRunConfig = JSON.parse(configContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
         }
 
-        const updatedConfig = this.serviceDependencyManager.updateEvolutionConfigWithServices(
-          evolutionRunConfig,
-          serviceInfo
-        );
+        if (serviceInfo) {
+          evolutionRunConfig = this.serviceDependencyManager.updateEvolutionConfigWithServices(
+            evolutionRunConfig,
+            serviceInfo
+          );
+          console.log(`🔗 Updated evolution config with new service endpoints for run ${runId}`);
+        }
 
-        await fs.writeFile(evolutionRunConfigPath, JSON.stringify(updatedConfig, null, 2));
-        console.log(`🔗 Updated evolution config with new service endpoints for run ${runId}`);
+        // Re-apply global overrides (env vars / global-defaults.json) so that
+        // configuration changes made since the run was first prepared take effect.
+        const globalDefaults = await this.configManager.loadGlobalDefaults();
+        const wrappedConfig = { evolutionRunConfig };
+        const updatedWrapped = this.configManager.applyRuntimeOptions(wrappedConfig, globalDefaults);
+        evolutionRunConfig = updatedWrapped.evolutionRunConfig;
+        console.log(`🔄 Re-applied global overrides for run ${runId}`);
+
+        await fs.writeFile(evolutionRunConfigPath, JSON.stringify(evolutionRunConfig, null, 2));
       }
 
       // Step 3: Clean up any stale PM2 process from the previous run
