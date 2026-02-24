@@ -18,6 +18,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import http from 'http';
 import https from 'https';
+import { parse as parseJSONC } from 'jsonc-parser';
 
 const execFileAsync = promisify(execFile);
 
@@ -147,12 +148,12 @@ export class SyncManager extends EventEmitter {
 
     // Ensure remote directory exists (if using sqlite3_rsync)
     if (config.centralHost && config.centralSyncPath && config.syncDatabases) {
-      await this._ensureRemoteDirectory(config, runId);
+      await this._ensureRemoteDirectory(config, syncEntry.folderName);
     }
 
     // Register run with central evoruns service (if using REST)
     if (config.evorunsServiceUrl && config.apiKey) {
-      await this._registerRunOnCentral(config, runId, runData);
+      await this._registerRunOnCentral(config, syncEntry.folderName, runData);
     }
 
     // Start periodic sync
@@ -226,17 +227,22 @@ export class SyncManager extends EventEmitter {
         results.databases = await this._syncDatabases(runId, entry, config);
       }
 
-      // Sync analysis files via REST
+      // Sync analysis files via REST (use folderName so files land in the correct evorun directory)
       if (config.syncAnalysis && config.evorunsServiceUrl && config.apiKey) {
         this._emitSyncEvent('sync-started', { runId, type: 'analysis' });
-        results.analysis = await this._syncAnalysisFiles(runId, entry, config);
+        results.analysis = await this._syncAnalysisFiles(entry.folderName, entry, config);
+      } else {
+        console.log(`🔄 Analysis sync skipped for run ${runId} (syncAnalysis=${config.syncAnalysis}, url=${!!config.evorunsServiceUrl}, apiKey=${!!config.apiKey})`);
       }
 
       const duration = Date.now() - startTime;
       entry.consecutiveErrors = 0;
 
       this._emitSyncEvent('sync-completed', { runId, duration, results });
-      console.log(`🔄 Sync completed for run ${runId} in ${duration}ms`);
+      const analysisSummary = results.analysis
+        ? `uploaded=${results.analysis.uploaded.length}, skipped=${results.analysis.skipped.length}, errors=${results.analysis.errors.length}`
+        : 'n/a';
+      console.log(`🔄 Sync completed for run ${runId} in ${duration}ms (analysis: ${analysisSummary})`);
 
     } catch (error) {
       entry.consecutiveErrors++;
@@ -295,7 +301,7 @@ export class SyncManager extends EventEmitter {
         continue;
       }
 
-      const remotePath = `${config.centralHost}:${config.centralSyncPath}/${runId}/${dbFile.name}`;
+      const remotePath = `${config.centralHost}:${config.centralSyncPath}/${entry.folderName}/${dbFile.name}`;
 
       try {
         const args = [localPath, remotePath];
@@ -340,53 +346,79 @@ export class SyncManager extends EventEmitter {
   }
 
   /**
-   * Sync analysis files via REST API to central kromosynth-evoruns service
+   * Sync analysis files via REST API to central kromosynth-evoruns service.
+   * Recursively syncs files from subdirectories (e.g. analysisResults/trees/).
    */
   async _syncAnalysisFiles(runId, entry, config) {
     const results = { uploaded: [], skipped: [], errors: [] };
 
-    const analysisDirs = ['analysisResults', 'generationFeatures'];
+    // Files to skip (OS metadata, etc.)
+    const IGNORED_FILES = new Set(['.DS_Store', 'Thumbs.db', '.gitkeep']);
+
+    // Directories to sync via REST (analysis outputs, not genome/grid data)
+    const candidateDirs = ['analysisResults'];
+    const analysisDirs = [];
+    for (const dirName of candidateDirs) {
+      if (await fs.pathExists(path.join(entry.evorunPath, dirName))) {
+        analysisDirs.push(dirName);
+      }
+    }
+
+    if (analysisDirs.length === 0) {
+      console.log(`\ud83d\udd04 No analysis directories found in ${entry.evorunPath}`);
+      return results;
+    }
+    console.log(`\ud83d\udd04 Syncing analysis dirs for run ${runId}: ${analysisDirs.join(', ')}`);
 
     for (const dirName of analysisDirs) {
       const localDir = path.join(entry.evorunPath, dirName);
 
-      if (!await fs.pathExists(localDir)) {
-        continue;
-      }
+      // Recursively collect all files with their subdirectory paths
+      const filesToSync = await this._collectFilesRecursive(localDir, '', IGNORED_FILES);
 
       try {
-        // Get list of existing files on central
-        const remoteFiles = await this._getRemoteFileList(config, runId, dirName);
-        const remoteFileSet = new Set(remoteFiles.map(f => f.name));
-
-        // List local files
-        const localFiles = await fs.readdir(localDir);
-
-        for (const fileName of localFiles) {
-          const filePath = path.join(localDir, fileName);
-          const stat = await fs.stat(filePath);
-
-          if (!stat.isFile()) continue;
-
-          // Skip if already on central (by name match)
-          // TODO: also compare size/mtime for changed files
-          if (remoteFileSet.has(fileName)) {
-            results.skipped.push(`${dirName}/${fileName}`);
-            continue;
+        // For each unique subdir, get the remote file list and sync
+        const filesBySubdir = new Map();
+        for (const file of filesToSync) {
+          const subdir = file.subdir ? `${dirName}/${file.subdir}` : dirName;
+          if (!filesBySubdir.has(subdir)) {
+            filesBySubdir.set(subdir, []);
           }
+          filesBySubdir.get(subdir).push(file);
+        }
 
-          // Upload file
+        for (const [subdir, files] of filesBySubdir) {
           try {
-            await this._uploadAnalysisFile(config, runId, dirName, filePath, fileName);
-            results.uploaded.push(`${dirName}/${fileName}`);
+            const remoteFiles = await this._getRemoteFileList(config, runId, subdir);
+            const remoteFileMap = new Map(remoteFiles.map(f => [f.name, f]));
+
+            for (const file of files) {
+              const remoteFile = remoteFileMap.get(file.name);
+              if (remoteFile) {
+                // Re-upload if local file size differs (file was updated)
+                const localStat = await fs.stat(file.fullPath);
+                if (localStat.size === remoteFile.size) {
+                  results.skipped.push(`${subdir}/${file.name}`);
+                  continue;
+                }
+              }
+
+              try {
+                await this._uploadAnalysisFile(config, runId, subdir, file.fullPath, file.name);
+                results.uploaded.push(`${subdir}/${file.name}`);
+              } catch (error) {
+                results.errors.push({ file: `${subdir}/${file.name}`, error: error.message });
+              }
+            }
           } catch (error) {
-            results.errors.push({ file: `${dirName}/${fileName}`, error: error.message });
+            results.errors.push({ dir: subdir, error: error.message });
+            console.error(`\u274c Failed to sync ${subdir} for run ${runId}:`, error.message);
           }
         }
 
       } catch (error) {
         results.errors.push({ dir: dirName, error: error.message });
-        console.error(`❌ Failed to sync ${dirName} for run ${runId}:`, error.message);
+        console.error(`\u274c Failed to sync ${dirName} for run ${runId}:`, error.message);
       }
     }
 
@@ -398,7 +430,36 @@ export class SyncManager extends EventEmitter {
     }
 
     if (results.uploaded.length > 0) {
-      console.log(`🔄 Uploaded ${results.uploaded.length} analysis files for run ${runId}`);
+      console.log(`\ud83d\udd04 Uploaded ${results.uploaded.length} analysis files for run ${runId}`);
+    }
+
+    return results;
+  }
+
+  /**
+   * Recursively collect all files under a directory, returning relative subdir paths.
+   */
+  async _collectFilesRecursive(baseDir, relativeDir, ignoredFiles) {
+    const results = [];
+    const currentDir = relativeDir ? path.join(baseDir, relativeDir) : baseDir;
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (ignoredFiles.has(entry.name)) continue;
+
+      const fullPath = path.join(currentDir, entry.name);
+
+      if (entry.isFile()) {
+        results.push({
+          name: entry.name,
+          fullPath,
+          subdir: relativeDir,
+        });
+      } else if (entry.isDirectory()) {
+        const childRelDir = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+        const childFiles = await this._collectFilesRecursive(baseDir, childRelDir, ignoredFiles);
+        results.push(...childFiles);
+      }
     }
 
     return results;
@@ -618,32 +679,68 @@ export class SyncManager extends EventEmitter {
 
   /**
    * Resolve the evorun directory path for a given run.
-   * The evorun path is determined by the CLI based on the run configuration.
+   * The CLI creates evorun directories based on evoRunsDirPath (from evolution-run-config.jsonc)
+   * combined with the iteration ID (from evolution-runs-config.jsonc).
    */
   _resolveEvorunPath(runId, runData) {
-    // The CLI creates evorun directories based on the run configuration.
-    // The output directory is stored in the run data.
-    if (runData.outputDir) {
-      return runData.outputDir;
-    }
-
-    // Fallback: try to find from working config
+    // Strategy 1: Derive from the working config files (most reliable)
+    // The runs config (configPath) references the run config which contains evoRunsDirPath,
+    // and the runs config itself contains the iteration ID used as the folder name.
     const configPath = runData.configPath;
     if (configPath) {
       try {
-        const configDir = path.dirname(configPath);
-        const configContent = fs.readFileSync(configPath, 'utf8');
-        // Look for evoRunDirPath or similar in config
-        const parsed = JSON.parse(configContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
-        if (parsed.evoRunDirPath) {
-          return parsed.evoRunDirPath;
+        if (!fs.existsSync(configPath)) {
+          console.warn(`🔄 configPath does not exist: ${configPath}`);
+        } else {
+          const runsConfigContent = fs.readFileSync(configPath, 'utf8');
+          const runsConfig = parseJSONC(runsConfigContent);
+
+          // Read the evolution-run-config to get evoRunsDirPath
+          const runConfigPath = runsConfig.baseEvolutionRunConfigFile;
+          if (runConfigPath && fs.existsSync(runConfigPath)) {
+            const runConfigContent = fs.readFileSync(runConfigPath, 'utf8');
+            const runConfig = parseJSONC(runConfigContent);
+            const evoRunsDirPath = runConfig.evoRunsDirPath;
+
+            if (evoRunsDirPath) {
+              // Get the iteration ID (folder name) from the runs config
+              const iterationId = runsConfig.evoRuns?.[0]?.iterations?.[0]?.id;
+              if (iterationId) {
+                const evorunPath = path.join(evoRunsDirPath, iterationId);
+                if (fs.existsSync(evorunPath)) {
+                  return evorunPath;
+                }
+                console.warn(`🔄 Derived evorun path does not exist: ${evorunPath}`);
+              } else {
+                console.warn(`🔄 No iterationId found in runsConfig`);
+              }
+
+              // Fallback: scan evoRunsDirPath for a directory starting with the runId
+              try {
+                const dirs = fs.readdirSync(evoRunsDirPath);
+                const match = dirs.find(d => d.startsWith(runId));
+                if (match) {
+                  return path.join(evoRunsDirPath, match);
+                }
+                console.warn(`🔄 No directory starting with ${runId} found in ${evoRunsDirPath}`);
+              } catch (scanErr) {
+                console.warn(`🔄 Failed to scan ${evoRunsDirPath}: ${scanErr.message}`);
+              }
+            } else {
+              console.warn(`🔄 No evoRunsDirPath in run config at ${runConfigPath}`);
+            }
+          } else {
+            console.warn(`🔄 baseEvolutionRunConfigFile not found: ${runConfigPath}`);
+          }
         }
-      } catch {
-        // Fall through to default
+      } catch (err) {
+        console.warn(`🔄 Error resolving evorun path from config: ${err.message}`);
       }
+    } else {
+      console.warn(`🔄 No configPath on runData for run ${runId}`);
     }
 
-    // Default: check the standard evorun location
+    // Strategy 2: Check the standard evorun location relative to the CLI
     const cliPath = process.env.KROMOSYNTH_CLI_SCRIPT || process.env.KROMOSYNTH_CLI_PATH;
     if (cliPath) {
       const evoruns = path.resolve(path.dirname(cliPath), 'evoruns');

@@ -649,6 +649,11 @@ export class EvolutionManager {
         });
       }
 
+      // Register run for data sync (non-blocking)
+      this.syncManager.registerRun(runId, run, {}).catch(err => {
+        console.warn(`⚠️ Failed to register sync for run ${runId}: ${err.message}`);
+      });
+
       return runId;
 
     } catch (error) {
