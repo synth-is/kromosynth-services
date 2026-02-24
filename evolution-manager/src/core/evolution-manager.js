@@ -677,12 +677,17 @@ export class EvolutionManager {
    */
   async getAllRuns() {
     const pm2Processes = await this.pm2List();
-    const kromosynthProcesses = pm2Processes.filter(proc => 
-      proc.name && proc.name.startsWith('kromosynth-')
+
+    // Only use evolution processes (not service dependencies) for status updates.
+    // Service processes like kromosynth-gRPC-variation_{runId} can remain online
+    // after the evolution process has stopped/terminated, and would incorrectly
+    // flip the run status back to 'running'.
+    const evolutionProcesses = pm2Processes.filter(proc =>
+      proc.name && proc.name.startsWith('kromosynth-evolution-')
     );
 
-    // Update run statuses based on PM2 data
-    for (const proc of kromosynthProcesses) {
+    // Update run statuses based on PM2 evolution process data
+    for (const proc of evolutionProcesses) {
       const runId = this.extractRunId(proc.name);
       const run = runId ? this.runs.get(runId) : null;
       
