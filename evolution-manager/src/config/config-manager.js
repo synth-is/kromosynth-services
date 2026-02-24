@@ -29,6 +29,12 @@ export class ConfigManager {
       'GLOBAL_USER_PREFERENCE_AGGREGATION': 'userPreferenceAggregation'
     };
 
+    // Environment variable mappings for global evolution run config overrides
+    this.evoRunEnvMappings = {
+      'GLOBAL_MAX_NUMBER_OF_PARENTS': 'maxNumberOfParents',
+      'GLOBAL_BATCH_SIZE': 'batchSize',
+    };
+
     // Environment variable mappings for global MQ configuration overrides
     this.mqEnvMappings = {
       'GLOBAL_MQ_ENABLED': 'mqEnabled',
@@ -166,6 +172,11 @@ export class ConfigManager {
       if (prefs.similarityThreshold !== undefined) flattened.userPreferenceSimilarityThreshold = prefs.similarityThreshold;
       if (prefs.aggregation !== undefined) flattened.userPreferenceAggregation = prefs.aggregation;
     }
+    if (config.evoRunConfig) {
+      const erc = config.evoRunConfig;
+      if (erc.maxNumberOfParents !== undefined) flattened.maxNumberOfParents = erc.maxNumberOfParents;
+      if (erc.batchSize !== undefined) flattened.batchSize = erc.batchSize;
+    }
     if (config.mqConfig) {
       const mq = config.mqConfig;
       if (mq.enabled !== undefined) flattened.mqEnabled = mq.enabled;
@@ -180,7 +191,7 @@ export class ConfigManager {
     }
     // Also copy any top-level keys that are already flattened
     for (const [key, value] of Object.entries(config)) {
-      if (key !== 'userPreferences' && key !== 'mqConfig' && value !== undefined) {
+      if (key !== 'userPreferences' && key !== 'evoRunConfig' && key !== 'mqConfig' && value !== undefined) {
         flattened[key] = value;
       }
     }
@@ -212,7 +223,14 @@ export class ConfigManager {
       }
     }
 
-    // 3. Load MQ configuration overrides from environment variables
+    // 3. Load evolution run config overrides from environment variables
+    for (const [envVar, configKey] of Object.entries(this.evoRunEnvMappings)) {
+      if (process.env[envVar] !== undefined) {
+        defaults[configKey] = this.parseEnvValue(process.env[envVar]);
+      }
+    }
+
+    // 4. Load MQ configuration overrides from environment variables
     for (const [envVar, configKey] of Object.entries(this.mqEnvMappings)) {
       if (process.env[envVar] !== undefined) {
         defaults[configKey] = this.parseEnvValue(process.env[envVar]);
@@ -230,6 +248,7 @@ export class ConfigManager {
     // Convert flat format to nested format for cleaner JSON
     const nested = {
       userPreferences: {},
+      evoRunConfig: {},
       mqConfig: {}
     };
 
@@ -253,6 +272,17 @@ export class ConfigManager {
       }
     }
 
+    const evoRunKeyMappings = {
+      maxNumberOfParents: 'maxNumberOfParents',
+      batchSize: 'batchSize',
+    };
+
+    for (const [flatKey, nestedKey] of Object.entries(evoRunKeyMappings)) {
+      if (defaults[flatKey] !== undefined) {
+        nested.evoRunConfig[nestedKey] = defaults[flatKey];
+      }
+    }
+
     const mqKeyMappings = {
       mqEnabled: 'enabled',
       mqBaseUrl: 'baseUrl',
@@ -272,6 +302,7 @@ export class ConfigManager {
     }
 
     // Remove empty sections
+    if (Object.keys(nested.evoRunConfig).length === 0) delete nested.evoRunConfig;
     if (Object.keys(nested.mqConfig).length === 0) delete nested.mqConfig;
 
     await fs.writeJson(this.globalDefaultsPath, nested, { spaces: 2 });
@@ -521,6 +552,16 @@ export class ConfigManager {
     // Apply output directory
     if (workingConfig.evolutionRunConfig) {
       workingConfig.evolutionRunConfig.outputDir = path.join(process.cwd(), 'working', options.runId || ulid(), 'output');
+    }
+
+    // Apply top-level evolution run config overrides
+    if (workingConfig.evolutionRunConfig) {
+      if (options.maxNumberOfParents !== undefined) {
+        workingConfig.evolutionRunConfig.maxNumberOfParents = options.maxNumberOfParents;
+      }
+      if (options.batchSize !== undefined) {
+        workingConfig.evolutionRunConfig.batchSize = options.batchSize;
+      }
     }
 
     // Apply user preferences configuration overrides
