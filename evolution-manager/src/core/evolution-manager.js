@@ -164,6 +164,8 @@ export class EvolutionManager {
           outputDir: run.outputDir,
           progress: run.progress,
           serviceInfo: run.serviceInfo,
+          // Auto-recovery
+          autoResumeCount: run.autoResumeCount || 0,
           // Auto-scheduling related fields
           autoScheduled: run.autoScheduled,
           pausedByScheduler: run.pausedByScheduler,
@@ -202,8 +204,8 @@ export class EvolutionManager {
           run.pid = pm2Proc.pid;
           run.cpu = pm2Proc.monit?.cpu;
           run.memory = pm2Proc.monit?.memory;
-        } else if (run.status === 'running') {
-          // Was running but process is gone — mark as stopped
+        } else if (run.status === 'running' || run.status === 'recovering') {
+          // Was running/recovering but process is gone — mark as stopped
           // (unless it was paused, in which case keep paused status)
           if (!run.pausedByScheduler) {
             run.status = 'stopped';
@@ -647,6 +649,7 @@ export class EvolutionManager {
       run.resumedAt = new Date().toISOString();
       run.stoppedAt = null;
       run.pausedAt = null;
+      run.autoResumeCount = 0; // Reset retry counter on successful resume
       run.pm2Name = pm2Name;
       run.timeSliceStartedAt = run.resumedAt; // Track when this time slice started
       run.serviceInfo = serviceInfo ? {
@@ -961,13 +964,55 @@ export class EvolutionManager {
       if (run.status === 'paused') {
         // Process was paused by scheduler, not a real termination
         return;
+      } else if (run.status === 'stopped') {
+        // User-initiated stop — already handled by stopRun()
+        return;
       } else if (exitCode === 0) {
         // Normal termination - check if elite map indicates completion
         reason = 'terminated';
         run.status = 'terminated';
         run.terminatedAt = new Date().toISOString();
       } else {
-        // Non-zero exit code indicates failure
+        // Non-zero exit code indicates unexpected failure
+        // Attempt auto-resume if within retry limit
+        const MAX_AUTO_RESUME_RETRIES = 3;
+        run.autoResumeCount = (run.autoResumeCount || 0) + 1;
+
+        if (run.autoResumeCount <= MAX_AUTO_RESUME_RETRIES) {
+          const retryDelaySec = run.autoResumeCount * 15; // 15s, 30s, 45s
+          console.log(`🔄 Evolution run ${runId} failed (exit code ${exitCode}), auto-resuming in ${retryDelaySec}s (attempt ${run.autoResumeCount}/${MAX_AUTO_RESUME_RETRIES})`);
+          run.status = 'recovering';
+          this.saveRunState();
+
+          // Emit recovery event
+          if (this.socketHandler) {
+            this.socketHandler.emit('run-recovering', { runId, attempt: run.autoResumeCount, maxRetries: MAX_AUTO_RESUME_RETRIES, retryDelaySec });
+          }
+
+          // Clean up services then resume after delay
+          this.serviceDependencyManager.stopServicesForRun(runId).catch(() => {}).then(() => {
+            setTimeout(async () => {
+              try {
+                console.log(`🔄 Auto-resuming evolution run ${runId} (attempt ${run.autoResumeCount})`);
+                await this.resumeRun(runId);
+                console.log(`✅ Auto-resumed evolution run ${runId} successfully`);
+              } catch (resumeError) {
+                console.error(`❌ Auto-resume failed for run ${runId}:`, resumeError.message);
+                run.status = 'failed';
+                run.failedAt = new Date().toISOString();
+                run.exitCode = exitCode;
+                this.saveRunState();
+                if (this.socketHandler) {
+                  this.socketHandler.emit('run-ended', { runId, reason: 'failed', exitCode });
+                }
+              }
+            }, retryDelaySec * 1000);
+          });
+          return; // Don't fall through to normal failure handling
+        }
+
+        // Exceeded retry limit
+        console.error(`❌ Evolution run ${runId} failed ${run.autoResumeCount} times, giving up`);
         reason = 'failed';
         run.status = 'failed';
         run.failedAt = new Date().toISOString();
