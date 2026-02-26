@@ -365,36 +365,60 @@ export class ServiceDependencyManager {
    */
   async stopServicesForRun(runId) {
     const serviceInfo = this.runServices.get(runId);
-    if (!serviceInfo) {
-      console.log(`ℹ️ No services found for run ${runId}`);
-      return;
-    }
 
     console.log(`🛑 Stopping services for run ${runId}...`);
 
     try {
-      // Stop all services for this run
-      const stopPromises = serviceInfo.services.map(async (service) => {
-        if (service.status === 'started') {
+      if (serviceInfo) {
+        // Stop known services from in-memory tracking
+        const stopPromises = serviceInfo.services.map(async (service) => {
+          if (service.status === 'started') {
+            try {
+              await this.pm2Stop(service.name);
+              await this.pm2Delete(service.name);
+              console.log(`  ✅ Stopped ${service.name}`);
+            } catch (error) {
+              console.warn(`  ⚠️ Error stopping ${service.name}:`, error.message);
+            }
+          }
+        });
+
+        await Promise.all(stopPromises);
+
+        // Cleanup temporary ecosystem file
+        if (serviceInfo.ecosystemPath && await fs.pathExists(serviceInfo.ecosystemPath)) {
+          await fs.remove(serviceInfo.ecosystemPath);
+        }
+      }
+
+      // Also scan PM2 for any orphaned service processes matching this run ID.
+      // This catches processes that survived a manager restart (in-memory Map lost)
+      // or weren't tracked properly.
+      await this.ensurePM2Connection();
+      const processes = await this.pm2List();
+      const orphanedProcesses = processes.filter(proc =>
+        proc.name &&
+        proc.name.includes(`_${runId}`) &&
+        !proc.name.startsWith('kromosynth-evolution-')
+      );
+
+      if (orphanedProcesses.length > 0) {
+        console.log(`  🧹 Found ${orphanedProcesses.length} orphaned service process(es) for run ${runId}`);
+        for (const proc of orphanedProcesses) {
           try {
-            await this.pm2Stop(service.name);
-            await this.pm2Delete(service.name);
-            console.log(`  ✅ Stopped ${service.name}`);
+            await this.pm2Stop(proc.name);
+            await this.pm2Delete(proc.name);
+            console.log(`  ✅ Cleaned up orphaned ${proc.name}`);
           } catch (error) {
-            console.warn(`  ⚠️ Error stopping ${service.name}:`, error.message);
+            console.warn(`  ⚠️ Error cleaning up ${proc.name}:`, error.message);
           }
         }
-      });
-
-      await Promise.all(stopPromises);
+      } else if (!serviceInfo) {
+        console.log(`  ℹ️ No services found for run ${runId}`);
+      }
 
       // Release port allocation
       this.portManager.releasePortRange(runId);
-
-      // Cleanup temporary ecosystem file
-      if (serviceInfo.ecosystemPath && await fs.pathExists(serviceInfo.ecosystemPath)) {
-        await fs.remove(serviceInfo.ecosystemPath);
-      }
 
       // Remove from tracking
       this.runServices.delete(runId);

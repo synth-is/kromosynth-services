@@ -164,6 +164,8 @@ export class EvolutionManager {
           outputDir: run.outputDir,
           progress: run.progress,
           serviceInfo: run.serviceInfo,
+          // Auto-recovery
+          autoResumeCount: run.autoResumeCount || 0,
           // Auto-scheduling related fields
           autoScheduled: run.autoScheduled,
           pausedByScheduler: run.pausedByScheduler,
@@ -202,8 +204,8 @@ export class EvolutionManager {
           run.pid = pm2Proc.pid;
           run.cpu = pm2Proc.monit?.cpu;
           run.memory = pm2Proc.monit?.memory;
-        } else if (run.status === 'running') {
-          // Was running but process is gone — mark as stopped
+        } else if (run.status === 'running' || run.status === 'recovering') {
+          // Was running/recovering but process is gone — mark as stopped
           // (unless it was paused, in which case keep paused status)
           if (!run.pausedByScheduler) {
             run.status = 'stopped';
@@ -229,6 +231,17 @@ export class EvolutionManager {
       const activeCount = Array.from(this.runs.values()).filter(r => r.status === 'running').length;
       if (restoredCount > 0) {
         console.log(`📋 Restored ${restoredCount} runs (${activeCount} still active)`);
+      }
+
+      // Clean up orphaned service processes for runs that are no longer running
+      const stoppedRunIds = Array.from(this.runs.entries())
+        .filter(([, run]) => run.status !== 'running')
+        .map(([runId]) => runId);
+
+      for (const runId of stoppedRunIds) {
+        this.serviceDependencyManager.stopServicesForRun(runId).catch(err => {
+          // Silently ignore — most runs won't have orphans
+        });
       }
     } catch (error) {
       console.warn('⚠️ Failed to load run state:', error.message);
@@ -562,11 +575,11 @@ export class EvolutionManager {
         }
       }
 
-      // Step 2: Update the working config with new service endpoints
+      // Step 2: Update the working config with new service endpoints and global overrides
       const runDir = path.join(process.cwd(), 'working', runId);
       const evolutionRunConfigPath = path.join(runDir, 'evolution-run-config.jsonc');
 
-      if (serviceInfo && await fs.pathExists(evolutionRunConfigPath)) {
+      if (await fs.pathExists(evolutionRunConfigPath)) {
         const configContent = await fs.readFile(evolutionRunConfigPath, 'utf8');
         let evolutionRunConfig;
         try {
@@ -576,13 +589,23 @@ export class EvolutionManager {
           evolutionRunConfig = JSON.parse(configContent.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
         }
 
-        const updatedConfig = this.serviceDependencyManager.updateEvolutionConfigWithServices(
-          evolutionRunConfig,
-          serviceInfo
-        );
+        if (serviceInfo) {
+          evolutionRunConfig = this.serviceDependencyManager.updateEvolutionConfigWithServices(
+            evolutionRunConfig,
+            serviceInfo
+          );
+          console.log(`🔗 Updated evolution config with new service endpoints for run ${runId}`);
+        }
 
-        await fs.writeFile(evolutionRunConfigPath, JSON.stringify(updatedConfig, null, 2));
-        console.log(`🔗 Updated evolution config with new service endpoints for run ${runId}`);
+        // Re-apply global overrides (env vars / global-defaults.json) so that
+        // configuration changes made since the run was first prepared take effect.
+        const globalDefaults = await this.configManager.loadGlobalDefaults();
+        const wrappedConfig = { evolutionRunConfig };
+        const updatedWrapped = this.configManager.applyRuntimeOptions(wrappedConfig, globalDefaults);
+        evolutionRunConfig = updatedWrapped.evolutionRunConfig;
+        console.log(`🔄 Re-applied global overrides for run ${runId}`);
+
+        await fs.writeFile(evolutionRunConfigPath, JSON.stringify(evolutionRunConfig, null, 2));
       }
 
       // Step 3: Clean up any stale PM2 process from the previous run
@@ -626,6 +649,7 @@ export class EvolutionManager {
       run.resumedAt = new Date().toISOString();
       run.stoppedAt = null;
       run.pausedAt = null;
+      run.autoResumeCount = 0; // Reset retry counter on successful resume
       run.pm2Name = pm2Name;
       run.timeSliceStartedAt = run.resumedAt; // Track when this time slice started
       run.serviceInfo = serviceInfo ? {
@@ -649,6 +673,11 @@ export class EvolutionManager {
         });
       }
 
+      // Register run for data sync (non-blocking)
+      this.syncManager.registerRun(runId, run, {}).catch(err => {
+        console.warn(`⚠️ Failed to register sync for run ${runId}: ${err.message}`);
+      });
+
       return runId;
 
     } catch (error) {
@@ -662,12 +691,17 @@ export class EvolutionManager {
    */
   async getAllRuns() {
     const pm2Processes = await this.pm2List();
-    const kromosynthProcesses = pm2Processes.filter(proc => 
-      proc.name && proc.name.startsWith('kromosynth-')
+
+    // Only use evolution processes (not service dependencies) for status updates.
+    // Service processes like kromosynth-gRPC-variation_{runId} can remain online
+    // after the evolution process has stopped/terminated, and would incorrectly
+    // flip the run status back to 'running'.
+    const evolutionProcesses = pm2Processes.filter(proc =>
+      proc.name && proc.name.startsWith('kromosynth-evolution-')
     );
 
-    // Update run statuses based on PM2 data
-    for (const proc of kromosynthProcesses) {
+    // Update run statuses based on PM2 evolution process data
+    for (const proc of evolutionProcesses) {
       const runId = this.extractRunId(proc.name);
       const run = runId ? this.runs.get(runId) : null;
       
@@ -930,18 +964,65 @@ export class EvolutionManager {
       if (run.status === 'paused') {
         // Process was paused by scheduler, not a real termination
         return;
+      } else if (run.status === 'stopped') {
+        // User-initiated stop — already handled by stopRun()
+        return;
       } else if (exitCode === 0) {
         // Normal termination - check if elite map indicates completion
         reason = 'terminated';
         run.status = 'terminated';
         run.terminatedAt = new Date().toISOString();
       } else {
-        // Non-zero exit code indicates failure
+        // Non-zero exit code indicates unexpected failure
+        // Attempt auto-resume if within retry limit
+        const MAX_AUTO_RESUME_RETRIES = 3;
+        run.autoResumeCount = (run.autoResumeCount || 0) + 1;
+
+        if (run.autoResumeCount <= MAX_AUTO_RESUME_RETRIES) {
+          const retryDelaySec = run.autoResumeCount * 15; // 15s, 30s, 45s
+          console.log(`🔄 Evolution run ${runId} failed (exit code ${exitCode}), auto-resuming in ${retryDelaySec}s (attempt ${run.autoResumeCount}/${MAX_AUTO_RESUME_RETRIES})`);
+          run.status = 'recovering';
+          this.saveRunState();
+
+          // Emit recovery event
+          if (this.socketHandler) {
+            this.socketHandler.emit('run-recovering', { runId, attempt: run.autoResumeCount, maxRetries: MAX_AUTO_RESUME_RETRIES, retryDelaySec });
+          }
+
+          // Clean up services then resume after delay
+          this.serviceDependencyManager.stopServicesForRun(runId).catch(() => {}).then(() => {
+            setTimeout(async () => {
+              try {
+                console.log(`🔄 Auto-resuming evolution run ${runId} (attempt ${run.autoResumeCount})`);
+                await this.resumeRun(runId);
+                console.log(`✅ Auto-resumed evolution run ${runId} successfully`);
+              } catch (resumeError) {
+                console.error(`❌ Auto-resume failed for run ${runId}:`, resumeError.message);
+                run.status = 'failed';
+                run.failedAt = new Date().toISOString();
+                run.exitCode = exitCode;
+                this.saveRunState();
+                if (this.socketHandler) {
+                  this.socketHandler.emit('run-ended', { runId, reason: 'failed', exitCode });
+                }
+              }
+            }, retryDelaySec * 1000);
+          });
+          return; // Don't fall through to normal failure handling
+        }
+
+        // Exceeded retry limit
+        console.error(`❌ Evolution run ${runId} failed ${run.autoResumeCount} times, giving up`);
         reason = 'failed';
         run.status = 'failed';
         run.failedAt = new Date().toISOString();
         run.exitCode = exitCode;
       }
+
+      // Clean up service dependencies (non-blocking)
+      this.serviceDependencyManager.stopServicesForRun(runId).catch(err => {
+        console.warn(`⚠️ Failed to stop services on ${reason} for run ${runId}: ${err.message}`);
+      });
 
       this.saveRunState();
 

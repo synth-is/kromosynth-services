@@ -11,24 +11,29 @@
  * - STATEFUL: Cannot be restarted mid-run (pyribs CMA-MAE, projection with retraining)
  *
  * Environment Variables (for portability across machines):
- * - KROMOSYNTH_ROOT: Base path for kromosynth repos (e.g., /Users/bthj/Developer/apps/synth.is)
- * - KROMOSYNTH_NODE: Path to node interpreter (e.g., /Users/bthj/.nvm/versions/node/v18.20.3/bin/node)
- * - KROMOSYNTH_PYTHON: Path to python interpreter (e.g., ${KROMOSYNTH_ROOT}/kromosynth-evaluate/.venv/bin/python3)
- * - KROMOSYNTH_VENDOR: Path to vendor directory for models (e.g., /Users/bthj/Developer/vendor)
+ * - KROMOSYNTH_ROOT: Base path containing kromosynth repos (REQUIRED on new machines)
+ * - KROMOSYNTH_NODE: Path to node interpreter (default: process.execPath)
+ * - KROMOSYNTH_PYTHON: Path to python interpreter (default: ${KROMOSYNTH_ROOT}/kromosynth-evaluate/.venv/bin/python3)
+ * - KROMOSYNTH_VENDOR: Path to vendor directory for models (default: sibling of KROMOSYNTH_ROOT)
  */
 
 import path from 'path';
 
 /**
- * Get paths from environment variables with fallbacks
- * Generated configs will use process.env references for portability
+ * Get paths from environment variables with fallbacks.
+ * At runtime the defaults derive from cwd/KROMOSYNTH_ROOT.
+ * The generated *template* code still emits env-var-based JS
+ * (ROOT, VENDOR, etc.) for full portability.
  */
 function getDefaultPaths() {
-  const root = process.env.KROMOSYNTH_ROOT || '/Users/bjornpjo/Developer/apps/synth.is';
-  const vendor = process.env.KROMOSYNTH_VENDOR || '/Users/bjornpjo/Developer/vendor';
+  // Infer root: env var, or two levels up from evolution-manager cwd
+  const root = process.env.KROMOSYNTH_ROOT
+    || path.resolve(process.cwd(), '../..');
+  const vendor = process.env.KROMOSYNTH_VENDOR
+    || path.join(path.dirname(root), 'vendor');
 
   return {
-    nodeInterpreter: process.env.KROMOSYNTH_NODE || '/Users/bjornpjo/.nvm/versions/node/v18.20.3/bin/node',
+    nodeInterpreter: process.env.KROMOSYNTH_NODE || process.execPath,
     pythonInterpreter: process.env.KROMOSYNTH_PYTHON || `${root}/kromosynth-evaluate/.venv/bin/python3`,
     kromosynthCli: `${root}/kromosynth-cli`,
     kromosynthRender: `${root}/kromosynth-render`,
@@ -94,7 +99,7 @@ const SERVICE_TEMPLATES = {
     staggerMinute: STAGGER_MINUTES.featureClap,
     basePort: 32051,
     usePython: true,
-    extraEnv: { CLAP_DEVICE: 'mps' }
+    extraEnv: { CLAP_DEVICE: 'mps', PYTORCH_ENABLE_MPS_FALLBACK: '1' }
   },
 
   genericFeatures: {
@@ -472,15 +477,16 @@ ${enabledServices.map(s => `//   - ${s}`).join('\n')}
 //
 // Staggered cron restarts (every 2 hours) for stateless services to prevent ECONNRESET storms.
 ${statefulServices.length > 0 ? `// NOTE: ${statefulServices.join(', ')} are STATEFUL - no cron_restart to preserve algorithm/model state.\n` : ''}
-// Environment variables for portability:
-//   KROMOSYNTH_ROOT   - Base path for kromosynth repos (default: /Users/bjornpjo/Developer/apps/synth.is)
-//   KROMOSYNTH_NODE   - Path to node interpreter (default: uses nvm)
+// Environment variables for portability across machines:
+//   KROMOSYNTH_ROOT   - Base path containing kromosynth repos (REQUIRED on new machines)
+//   KROMOSYNTH_NODE   - Path to node interpreter (default: process.execPath)
 //   KROMOSYNTH_PYTHON - Path to python interpreter (default: \${ROOT}/kromosynth-evaluate/.venv/bin/python3)
-//   KROMOSYNTH_VENDOR - Path to vendor directory (default: /Users/bjornpjo/Developer/vendor)
+//   KROMOSYNTH_VENDOR - Path to vendor directory (default: sibling of ROOT)
 
+if (!process.env.KROMOSYNTH_ROOT) console.warn('⚠️  KROMOSYNTH_ROOT not set – using default. Set it for portability.');
 const ROOT = process.env.KROMOSYNTH_ROOT || '/Users/bjornpjo/Developer/apps/synth.is';
-const VENDOR = process.env.KROMOSYNTH_VENDOR || '/Users/bjornpjo/Developer/vendor';
-const NODE = process.env.KROMOSYNTH_NODE || '/Users/bjornpjo/.nvm/versions/node/v18.20.3/bin/node';
+const VENDOR = process.env.KROMOSYNTH_VENDOR || require('path').join(require('path').dirname(ROOT), 'vendor');
+const NODE = process.env.KROMOSYNTH_NODE || process.execPath;
 const PYTHON = process.env.KROMOSYNTH_PYTHON || \`\${ROOT}/kromosynth-evaluate/.venv/bin/python3\`;
 
 export default {

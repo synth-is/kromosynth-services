@@ -268,7 +268,53 @@ function generateTemplateInfo(templateName, evoRun, runConfig, hyperparameters) 
 }
 
 /**
- * Clean configuration for template use
+ * Build a mapping of known absolute path prefixes to {{PLACEHOLDER}} tokens.
+ * Detects the current machine's paths from environment variables and cwd.
+ */
+function buildPathReplacements() {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const root = process.env.KROMOSYNTH_ROOT || '';
+  const vendor = process.env.KROMOSYNTH_VENDOR || '';
+
+  // Collect candidate absolute prefixes → placeholder, longest first
+  const replacements = [];
+
+  if (root) replacements.push([root, '{{KROMOSYNTH_ROOT}}']);
+  if (vendor) replacements.push([vendor, '{{KROMOSYNTH_VENDOR}}']);
+  if (home) replacements.push([home, '{{HOME}}']);
+
+  // Sort by path length descending so longer (more specific) paths match first
+  replacements.sort(([a], [b]) => b.length - a.length);
+  return replacements;
+}
+
+/**
+ * Recursively replace absolute paths in a value tree with {{PLACEHOLDER}} tokens.
+ */
+function convertPathsToPlaceholders(value, replacements) {
+  if (typeof value === 'string') {
+    let result = value;
+    for (const [absPath, placeholder] of replacements) {
+      result = result.replaceAll(absPath, placeholder);
+    }
+    return result;
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => convertPathsToPlaceholders(item, replacements));
+  }
+  if (value !== null && typeof value === 'object') {
+    const result = {};
+    for (const [key, val] of Object.entries(value)) {
+      result[key] = convertPathsToPlaceholders(val, replacements);
+    }
+    return result;
+  }
+  return value;
+}
+
+/**
+ * Clean configuration for template use.
+ * Converts absolute paths to portable {{PLACEHOLDER}} tokens.
  */
 function cleanConfigForTemplate(config) {
   const cleaned = JSON.parse(JSON.stringify(config)); // Deep clone
@@ -283,8 +329,15 @@ function cleanConfigForTemplate(config) {
     cleaned.evolutionaryRunId = "template-run"; // Generic ID for template
   }
 
-  // Clean up any other absolute paths or machine-specific settings
-  // Add more cleaning rules here as needed based on your config structure
+  // Convert remaining absolute paths to portable placeholders
+  const replacements = buildPathReplacements();
+  if (replacements.length > 0) {
+    console.log('🔄 Converting absolute paths to portable placeholders...');
+    for (const [absPath, placeholder] of replacements) {
+      console.log(`   ${absPath} → ${placeholder}`);
+    }
+    return convertPathsToPlaceholders(cleaned, replacements);
+  }
 
   return cleaned;
 }

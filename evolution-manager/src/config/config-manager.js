@@ -9,6 +9,11 @@ export class ConfigManager {
     this.workingDir = path.join(process.cwd(), 'working');
     this.globalDefaultsPath = path.join(this.workingDir, 'global-defaults.json');
 
+    // Path placeholder resolution:
+    //   Templates use {{PLACEHOLDER}} tokens for portability across machines.
+    //   Resolved at load time from environment variables with sensible defaults.
+    this.pathPlaceholders = this._buildPathPlaceholders();
+
     // Environment variable mappings for global user preferences
     this.envMappings = {
       'GLOBAL_USER_PREFERENCES_RATE': 'userPreferencesRate',
@@ -24,8 +29,116 @@ export class ConfigManager {
       'GLOBAL_USER_PREFERENCE_AGGREGATION': 'userPreferenceAggregation'
     };
 
+    // Environment variable mappings for global evolution run config overrides
+    this.evoRunEnvMappings = {
+      'GLOBAL_MAX_NUMBER_OF_PARENTS': 'maxNumberOfParents',
+      'GLOBAL_BATCH_SIZE': 'batchSize',
+    };
+
+    // Environment variable mappings for global MQ configuration overrides
+    this.mqEnvMappings = {
+      'GLOBAL_MQ_ENABLED': 'mqEnabled',
+      'GLOBAL_MQ_BASE_URL': 'mqBaseUrl',
+      'GLOBAL_MQ_CHECK_FREQUENCY': 'mqCheckFrequency',
+      'GLOBAL_MQ_MAX_REQUESTS_PER_CHECK': 'mqMaxRequestsPerCheck',
+      'GLOBAL_MQ_ANCESTRY_DEPTH': 'mqAncestryDepth',
+      'GLOBAL_MQ_INCLUDE_PARENT_GENOMES': 'mqIncludeParentGenomes',
+      'GLOBAL_MQ_INCLUDE_SIBLINGS': 'mqIncludeSiblings',
+      'GLOBAL_MQ_MAX_SIBLINGS': 'mqMaxSiblings',
+      'GLOBAL_MQ_INCLUDE_USER_PREFERENCE_ANCESTORS': 'mqIncludeUserPreferenceAncestors'
+    };
+
     // Ensure working directory exists
     fs.ensureDirSync(this.workingDir);
+  }
+
+  /**
+   * Build path placeholder map from environment variables with defaults.
+   *
+   * Supported placeholders (in template JSONC & ecosystem configs):
+   *   {{KROMOSYNTH_ROOT}}   – base directory containing kromosynth repos
+   *   {{KROMOSYNTH_VENDOR}} – vendor directory (models, tfjs, etc.)
+   *   {{HOME}}              – user home directory
+   *
+   * These are resolved once at construction and applied when loading templates.
+   */
+  _buildPathPlaceholders() {
+    const home = process.env.HOME || process.env.USERPROFILE || '/tmp';
+
+    // Derive KROMOSYNTH_ROOT: env var, or infer from cwd (evolution-manager lives
+    // inside kromosynth-services which is a sibling of other repos)
+    const root = process.env.KROMOSYNTH_ROOT
+      || path.resolve(process.cwd(), '../..');
+
+    const vendor = process.env.KROMOSYNTH_VENDOR
+      || path.join(path.dirname(root), 'vendor');
+
+    const placeholders = {
+      'KROMOSYNTH_ROOT': root,
+      'KROMOSYNTH_VENDOR': vendor,
+      'HOME': home,
+    };
+
+    console.log('📂 Path placeholders:');
+    for (const [key, val] of Object.entries(placeholders)) {
+      console.log(`   {{${key}}} → ${val}`);
+    }
+
+    return placeholders;
+  }
+
+  /**
+   * Replace all {{PLACEHOLDER}} tokens in a JSON-compatible value tree.
+   * Works recursively on objects, arrays, and strings.
+   */
+  resolvePathPlaceholders(value) {
+    if (typeof value === 'string') {
+      let resolved = value;
+      for (const [placeholder, replacement] of Object.entries(this.pathPlaceholders)) {
+        resolved = resolved.replaceAll(`{{${placeholder}}}`, replacement);
+      }
+      return resolved;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => this.resolvePathPlaceholders(item));
+    }
+    if (value !== null && typeof value === 'object') {
+      const result = {};
+      for (const [key, val] of Object.entries(value)) {
+        result[key] = this.resolvePathPlaceholders(val);
+      }
+      return result;
+    }
+    return value; // numbers, booleans, null
+  }
+
+  /**
+   * Convert absolute paths in a config back to placeholder tokens.
+   * Useful when persisting configs that should remain portable.
+   * Longest match first to avoid partial replacements.
+   */
+  convertToPlaceholders(value) {
+    if (typeof value === 'string') {
+      let converted = value;
+      // Sort by path length descending so longer (more specific) paths match first
+      const sorted = Object.entries(this.pathPlaceholders)
+        .sort(([, a], [, b]) => b.length - a.length);
+      for (const [placeholder, absPath] of sorted) {
+        converted = converted.replaceAll(absPath, `{{${placeholder}}}`);
+      }
+      return converted;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => this.convertToPlaceholders(item));
+    }
+    if (value !== null && typeof value === 'object') {
+      const result = {};
+      for (const [key, val] of Object.entries(value)) {
+        result[key] = this.convertToPlaceholders(val);
+      }
+      return result;
+    }
+    return value;
   }
 
   /**
@@ -41,7 +154,7 @@ export class ConfigManager {
   }
 
   /**
-   * Flatten nested userPreferences config to flat key format
+   * Flatten nested config sections (userPreferences, mqConfig) to flat key format
    */
   flattenUserPreferencesConfig(config) {
     const flattened = {};
@@ -59,9 +172,26 @@ export class ConfigManager {
       if (prefs.similarityThreshold !== undefined) flattened.userPreferenceSimilarityThreshold = prefs.similarityThreshold;
       if (prefs.aggregation !== undefined) flattened.userPreferenceAggregation = prefs.aggregation;
     }
+    if (config.evoRunConfig) {
+      const erc = config.evoRunConfig;
+      if (erc.maxNumberOfParents !== undefined) flattened.maxNumberOfParents = erc.maxNumberOfParents;
+      if (erc.batchSize !== undefined) flattened.batchSize = erc.batchSize;
+    }
+    if (config.mqConfig) {
+      const mq = config.mqConfig;
+      if (mq.enabled !== undefined) flattened.mqEnabled = mq.enabled;
+      if (mq.baseUrl !== undefined) flattened.mqBaseUrl = mq.baseUrl;
+      if (mq.checkFrequency !== undefined) flattened.mqCheckFrequency = mq.checkFrequency;
+      if (mq.maxRequestsPerCheck !== undefined) flattened.mqMaxRequestsPerCheck = mq.maxRequestsPerCheck;
+      if (mq.ancestryDepth !== undefined) flattened.mqAncestryDepth = mq.ancestryDepth;
+      if (mq.includeParentGenomes !== undefined) flattened.mqIncludeParentGenomes = mq.includeParentGenomes;
+      if (mq.includeSiblings !== undefined) flattened.mqIncludeSiblings = mq.includeSiblings;
+      if (mq.maxSiblings !== undefined) flattened.mqMaxSiblings = mq.maxSiblings;
+      if (mq.includeUserPreferenceAncestors !== undefined) flattened.mqIncludeUserPreferenceAncestors = mq.includeUserPreferenceAncestors;
+    }
     // Also copy any top-level keys that are already flattened
     for (const [key, value] of Object.entries(config)) {
-      if (key !== 'userPreferences' && value !== undefined) {
+      if (key !== 'userPreferences' && key !== 'evoRunConfig' && key !== 'mqConfig' && value !== undefined) {
         flattened[key] = value;
       }
     }
@@ -86,8 +216,22 @@ export class ConfigManager {
       }
     }
 
-    // 2. Override with environment variables
+    // 2. Override with environment variables (user preferences)
     for (const [envVar, configKey] of Object.entries(this.envMappings)) {
+      if (process.env[envVar] !== undefined) {
+        defaults[configKey] = this.parseEnvValue(process.env[envVar]);
+      }
+    }
+
+    // 3. Load evolution run config overrides from environment variables
+    for (const [envVar, configKey] of Object.entries(this.evoRunEnvMappings)) {
+      if (process.env[envVar] !== undefined) {
+        defaults[configKey] = this.parseEnvValue(process.env[envVar]);
+      }
+    }
+
+    // 4. Load MQ configuration overrides from environment variables
+    for (const [envVar, configKey] of Object.entries(this.mqEnvMappings)) {
       if (process.env[envVar] !== undefined) {
         defaults[configKey] = this.parseEnvValue(process.env[envVar]);
       }
@@ -103,10 +247,12 @@ export class ConfigManager {
   async saveGlobalDefaults(defaults) {
     // Convert flat format to nested format for cleaner JSON
     const nested = {
-      userPreferences: {}
+      userPreferences: {},
+      evoRunConfig: {},
+      mqConfig: {}
     };
 
-    const keyMappings = {
+    const userPrefsKeyMappings = {
       userPreferencesRate: 'rate',
       userPreferencesServiceUrl: 'serviceUrl',
       userPreferencesStrategy: 'strategy',
@@ -120,11 +266,44 @@ export class ConfigManager {
       userPreferenceAggregation: 'aggregation'
     };
 
-    for (const [flatKey, nestedKey] of Object.entries(keyMappings)) {
+    for (const [flatKey, nestedKey] of Object.entries(userPrefsKeyMappings)) {
       if (defaults[flatKey] !== undefined) {
         nested.userPreferences[nestedKey] = defaults[flatKey];
       }
     }
+
+    const evoRunKeyMappings = {
+      maxNumberOfParents: 'maxNumberOfParents',
+      batchSize: 'batchSize',
+    };
+
+    for (const [flatKey, nestedKey] of Object.entries(evoRunKeyMappings)) {
+      if (defaults[flatKey] !== undefined) {
+        nested.evoRunConfig[nestedKey] = defaults[flatKey];
+      }
+    }
+
+    const mqKeyMappings = {
+      mqEnabled: 'enabled',
+      mqBaseUrl: 'baseUrl',
+      mqCheckFrequency: 'checkFrequency',
+      mqMaxRequestsPerCheck: 'maxRequestsPerCheck',
+      mqAncestryDepth: 'ancestryDepth',
+      mqIncludeParentGenomes: 'includeParentGenomes',
+      mqIncludeSiblings: 'includeSiblings',
+      mqMaxSiblings: 'maxSiblings',
+      mqIncludeUserPreferenceAncestors: 'includeUserPreferenceAncestors'
+    };
+
+    for (const [flatKey, nestedKey] of Object.entries(mqKeyMappings)) {
+      if (defaults[flatKey] !== undefined) {
+        nested.mqConfig[nestedKey] = defaults[flatKey];
+      }
+    }
+
+    // Remove empty sections
+    if (Object.keys(nested.evoRunConfig).length === 0) delete nested.evoRunConfig;
+    if (Object.keys(nested.mqConfig).length === 0) delete nested.mqConfig;
 
     await fs.writeJson(this.globalDefaultsPath, nested, { spaces: 2 });
     console.log('💾 Saved global defaults to:', this.globalDefaultsPath);
@@ -300,14 +479,14 @@ export class ConfigManager {
     const evolutionRunConfigPath = path.join(templateDir, 'evolution-run-config.jsonc');
     if (await fs.pathExists(evolutionRunConfigPath)) {
       const content = await fs.readFile(evolutionRunConfigPath, 'utf8');
-      configFiles.evolutionRunConfig = parseJSONC(content);
+      configFiles.evolutionRunConfig = this.resolvePathPlaceholders(parseJSONC(content));
     }
 
     // Load hyperparameters
     const hyperparametersPath = path.join(templateDir, 'evolutionary-hyperparameters.jsonc');
     if (await fs.pathExists(hyperparametersPath)) {
       const content = await fs.readFile(hyperparametersPath, 'utf8');
-      configFiles.hyperparameters = parseJSONC(content);
+      configFiles.hyperparameters = this.resolvePathPlaceholders(parseJSONC(content));
     }
 
     return {
@@ -375,6 +554,16 @@ export class ConfigManager {
       workingConfig.evolutionRunConfig.outputDir = path.join(process.cwd(), 'working', options.runId || ulid(), 'output');
     }
 
+    // Apply top-level evolution run config overrides
+    if (workingConfig.evolutionRunConfig) {
+      if (options.maxNumberOfParents !== undefined) {
+        workingConfig.evolutionRunConfig.maxNumberOfParents = options.maxNumberOfParents;
+      }
+      if (options.batchSize !== undefined) {
+        workingConfig.evolutionRunConfig.batchSize = options.batchSize;
+      }
+    }
+
     // Apply user preferences configuration overrides
     if (workingConfig.evolutionRunConfig?.classifiers?.[0]?.classConfigurations?.[0]) {
       const classConfig = workingConfig.evolutionRunConfig.classifiers[0].classConfigurations[0];
@@ -418,6 +607,39 @@ export class ConfigManager {
       }
       if (options.userPreferenceAggregation) {
         classConfig.userPreferenceAggregation = options.userPreferenceAggregation;
+      }
+    }
+
+    // Apply MQ configuration overrides
+    if (workingConfig.evolutionRunConfig?.mqConfig) {
+      const mqConfig = workingConfig.evolutionRunConfig.mqConfig;
+
+      if (options.mqEnabled !== undefined) {
+        mqConfig.enabled = options.mqEnabled;
+      }
+      if (options.mqBaseUrl) {
+        mqConfig.baseUrl = options.mqBaseUrl;
+      }
+      if (options.mqCheckFrequency !== undefined) {
+        mqConfig.checkFrequency = options.mqCheckFrequency;
+      }
+      if (options.mqMaxRequestsPerCheck !== undefined) {
+        mqConfig.maxRequestsPerCheck = options.mqMaxRequestsPerCheck;
+      }
+      if (options.mqAncestryDepth !== undefined) {
+        mqConfig.ancestryDepth = options.mqAncestryDepth;
+      }
+      if (options.mqIncludeParentGenomes !== undefined) {
+        mqConfig.includeParentGenomes = options.mqIncludeParentGenomes;
+      }
+      if (options.mqIncludeSiblings !== undefined) {
+        mqConfig.includeSiblings = options.mqIncludeSiblings;
+      }
+      if (options.mqMaxSiblings !== undefined) {
+        mqConfig.maxSiblings = options.mqMaxSiblings;
+      }
+      if (options.mqIncludeUserPreferenceAncestors !== undefined) {
+        mqConfig.includeUserPreferenceAncestors = options.mqIncludeUserPreferenceAncestors;
       }
     }
 
