@@ -1,8 +1,44 @@
+const path = require('path');
+
+// Environment-driven paths: defaults match dev machine layout.
+// On production, set SYNTH_ROOT (and optionally NODE_BIN, PYTHON_BIN, VENDOR_DIR)
+// in the shell profile or pass them when starting PM2.
+const SYNTH_ROOT = process.env.SYNTH_ROOT
+  || path.join(process.env.HOME, 'Developer/apps/synth.is');
+const NODE_BIN = process.env.NODE_BIN || 'node';
+const PYTHON_BIN = process.env.PYTHON_BIN
+  || path.join(SYNTH_ROOT, 'kromosynth-evaluate/.venv/bin/python3');
+const VENDOR_DIR = process.env.VENDOR_DIR
+  || path.join(process.env.HOME, 'Developer/vendor');
+
+const GENOMES_DB_PATH = path.join(SYNTH_ROOT, 'kromosynth-recommend/data/genomes.db');
+const RENDER_SOCKET_DIR = path.join(SYNTH_ROOT, 'kromosynth-render/render-socket');
+const EVALUATE_DIR = path.join(SYNTH_ROOT, 'kromosynth-evaluate');
+const MODELS_PATH = path.join(EVALUATE_DIR, 'measurements/models');
+
+function renderFloatApp(name, port) {
+  return {
+    name,
+    cwd: RENDER_SOCKET_DIR,
+    script: 'node',
+    args: `--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port ${port}`,
+    autorestart: true,
+    max_restarts: 10,
+    min_uptime: '10s',
+    restart_delay: 1000,
+    env: {
+      NODE_ENV: 'production',
+      GENOMES_DB_PATH,
+      EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
+    }
+  };
+}
+
 module.exports = {
   apps: [
     {
       name: 'kromosynth-mq',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-mq',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-mq'),
       script: 'npm',
       args: 'run start',
       env: {
@@ -11,7 +47,7 @@ module.exports = {
     },
     {
       name: 'kromosynth-recommend',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-recommend'),
       script: 'npm',
       args: 'run start',
       env: {
@@ -20,7 +56,7 @@ module.exports = {
     },
     {
       name: 'kromosynth-pocketbase',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-auth',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-auth'),
       script: 'npm',
       args: 'run pocketbase:start',
       env: {
@@ -29,7 +65,7 @@ module.exports = {
     },
     {
       name: 'kromosynth-auth',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-auth',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-auth'),
       script: 'npm',
       args: 'run start',
       env: {
@@ -37,80 +73,24 @@ module.exports = {
       }
     },
     {
-      name: 'kromosynth-render-streaming',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
-      script: 'npm',
-      args: 'run start',
+      name: 'kromosynth-render-preview',
+      cwd: RENDER_SOCKET_DIR,
+      script: NODE_BIN,
+      args: 'src/server.js',
       env: {
         NODE_ENV: 'production',
         PORT: 3000
       }
     },
-    {
-      name: 'kromosynth-render-float-1',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
-      script: 'node',
-      args: '--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port 3001',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 1000,
-      env: {
-        NODE_ENV: 'production',
-        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
-        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
-      }
-    },
-    {
-      name: 'kromosynth-render-float-2',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
-      script: 'node',
-      args: '--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port 3006',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 1000,
-      env: {
-        NODE_ENV: 'production',
-        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
-        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
-      }
-    },
-    {
-      name: 'kromosynth-render-float-3',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
-      script: 'node',
-      args: '--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port 3007',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 1000,
-      env: {
-        NODE_ENV: 'production',
-        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
-        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
-      }
-    },
-    {
-      name: 'kromosynth-render-float-4',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-render/render-socket',
-      script: 'node',
-      args: '--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port 3005',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 1000,
-      env: {
-        NODE_ENV: 'production',
-        GENOMES_DB_PATH: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-recommend/data/genomes.db',
-        EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
-      }
-    },
+    renderFloatApp('kromosynth-render-float-1', 3001),
+    renderFloatApp('kromosynth-render-float-2', 3006),
+    renderFloatApp('kromosynth-render-float-3', 3007),
+    renderFloatApp('kromosynth-render-float-4', 3005),
     {
       name: 'kromosynth-variation-breeding',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-cli',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-cli'),
       script: 'node',
-      args: 'gRPC/genomeVariationWS.js --port 49071 --modelUrl file:///Users/bjornpjo/Developer/vendor/tfjs-model_yamnet_tfjs_1/model.json --processTitle kromosynth-variation-breeding',
+      args: `gRPC/genomeVariationWS.js --port 49071 --modelUrl file://${path.join(VENDOR_DIR, 'tfjs-model_yamnet_tfjs_1/model.json')} --processTitle kromosynth-variation-breeding`,
       env: {
         NODE_ENV: 'production',
         PORT: 49071,
@@ -121,10 +101,10 @@ module.exports = {
     // PM2's rolling restart tries to start new instances before killing old ones, causing "address already in use" errors.
     {
       name: 'kromosynth-features-breeding-1',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/evaluation/unsupervised',
-      interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
+      cwd: path.join(EVALUATE_DIR, 'evaluation/unsupervised'),
+      interpreter: PYTHON_BIN,
       script: 'features.py',
-      args: '--host 127.0.0.1 --models-path /Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/measurements/models',
+      args: `--host 127.0.0.1 --models-path ${MODELS_PATH}`,
       max_memory_restart: '2G',
       kill_timeout: 10000,
       env: {
@@ -134,10 +114,10 @@ module.exports = {
     },
     {
       name: 'kromosynth-features-breeding-2',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/evaluation/unsupervised',
-      interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
+      cwd: path.join(EVALUATE_DIR, 'evaluation/unsupervised'),
+      interpreter: PYTHON_BIN,
       script: 'features.py',
-      args: '--host 127.0.0.1 --models-path /Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/measurements/models',
+      args: `--host 127.0.0.1 --models-path ${MODELS_PATH}`,
       max_memory_restart: '2G',
       kill_timeout: 10000,
       env: {
@@ -147,8 +127,8 @@ module.exports = {
     },
     {
       name: 'kromosynth-clap-breeding',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate',
-      interpreter: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evaluate/.venv/bin/python3',
+      cwd: EVALUATE_DIR,
+      interpreter: PYTHON_BIN,
       script: 'features/clap/ws_clap_service.py',
       instances: 1,
       exec_mode: 'fork',
@@ -162,7 +142,7 @@ module.exports = {
     },
     {
       name: 'kromosynth-vi',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-vi',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-vi'),
       script: 'npm',
       args: 'run start',
       env: {
@@ -171,7 +151,7 @@ module.exports = {
     },
     {
       name: 'kromosynth-evoruns',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/kromosynth-evoruns',
+      cwd: path.join(SYNTH_ROOT, 'kromosynth-evoruns'),
       script: 'npm',
       args: 'run start',
       env: {
@@ -181,12 +161,15 @@ module.exports = {
     },
     {
       name: 'umami',
-      cwd: '/Users/bjornpjo/Developer/apps/synth.is/umami',
-      script: 'pnpm',
+      cwd: path.join(SYNTH_ROOT, 'umami'),
+      script: 'npm',
       args: 'start',
       env: {
         NODE_ENV: 'production',
-        PORT: 3100
+        PORT: 3100,
+        DATABASE_URL: `file:${path.join(SYNTH_ROOT, 'umami/umami.db')}`,
+        DISABLE_TELEMETRY: 1,
+        CLIENT_IP_HEADER: 'X-Forwarded-For'
       }
     }
   ]

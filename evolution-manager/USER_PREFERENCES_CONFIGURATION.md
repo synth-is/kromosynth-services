@@ -90,7 +90,7 @@ When both environment variables and the global defaults file are present:
 | Environment Variable | Config Key | Type | Default | Description |
 |---------------------|------------|------|---------|-------------|
 | `GLOBAL_USER_PREFERENCES_RATE` | `userPreferencesRate` | number | 0 | Probability (0-1) of selecting parent from user-liked sounds |
-| `GLOBAL_USER_PREFERENCES_SERVICE_URL` | `userPreferencesServiceUrl` | string | "http://localhost:3060" | kromosynth-recommend service URL |
+| `GLOBAL_USER_PREFERENCES_SERVICE_URL` | `userPreferencesServiceUrl` | string | "http://localhost:3004" | kromosynth-recommend service URL |
 | `GLOBAL_USER_PREFERENCES_STRATEGY` | `userPreferencesStrategy` | string | "weighted" | Selection strategy: "weighted" or "uniform" |
 | `GLOBAL_USER_PREFERENCES_USER_LIMIT` | `userPreferencesUserLimit` | number | 20 | Max users to fetch preferences from |
 | `GLOBAL_USER_PREFERENCES_CACHE_SIZE` | `userPreferencesCacheSize` | number | 500 | Max genomes to cache locally |
