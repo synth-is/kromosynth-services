@@ -611,6 +611,12 @@ export class ConfigManager {
     }
 
     // Apply MQ configuration overrides
+    // Create mqConfig if it doesn't exist but global MQ options are provided
+    if (workingConfig.evolutionRunConfig && !workingConfig.evolutionRunConfig.mqConfig) {
+      if (options.mqEnabled !== undefined || options.mqBaseUrl) {
+        workingConfig.evolutionRunConfig.mqConfig = {};
+      }
+    }
     if (workingConfig.evolutionRunConfig?.mqConfig) {
       const mqConfig = workingConfig.evolutionRunConfig.mqConfig;
 
