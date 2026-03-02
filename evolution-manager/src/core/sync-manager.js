@@ -355,6 +355,13 @@ export class SyncManager extends EventEmitter {
     // Files to skip (OS metadata, etc.)
     const IGNORED_FILES = new Set(['.DS_Store', 'Thumbs.db', '.gitkeep']);
 
+    // File extensions/patterns to skip during analysis sync.
+    // SQLite databases under analysisResults/ are used only by the QD run
+    // process itself (e.g. lineage_state_*.sqlite for incremental lineage
+    // tracking) and can be very large (100s of MB). The central server only
+    // needs the .json.gz output files for visualization.
+    const IGNORED_EXTENSIONS = new Set(['.sqlite', '.sqlite-wal', '.sqlite-shm', '.sqlite-journal', '.db', '.db-wal', '.db-shm']);
+
     // Directories to sync via REST (analysis outputs, not genome/grid data)
     const candidateDirs = ['analysisResults'];
     const analysisDirs = [];
@@ -374,7 +381,7 @@ export class SyncManager extends EventEmitter {
       const localDir = path.join(entry.evorunPath, dirName);
 
       // Recursively collect all files with their subdirectory paths
-      const filesToSync = await this._collectFilesRecursive(localDir, '', IGNORED_FILES);
+      const filesToSync = await this._collectFilesRecursive(localDir, '', IGNORED_FILES, IGNORED_EXTENSIONS);
 
       try {
         // For each unique subdir, get the remote file list and sync
@@ -438,14 +445,24 @@ export class SyncManager extends EventEmitter {
 
   /**
    * Recursively collect all files under a directory, returning relative subdir paths.
+   * @param {string} baseDir - Root directory to scan
+   * @param {string} relativeDir - Current subdirectory (for recursion)
+   * @param {Set<string>} ignoredFiles - Exact filenames to skip
+   * @param {Set<string>} [ignoredExtensions] - File extensions to skip (e.g. '.sqlite')
    */
-  async _collectFilesRecursive(baseDir, relativeDir, ignoredFiles) {
+  async _collectFilesRecursive(baseDir, relativeDir, ignoredFiles, ignoredExtensions = new Set()) {
     const results = [];
     const currentDir = relativeDir ? path.join(baseDir, relativeDir) : baseDir;
     const entries = await fs.readdir(currentDir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (ignoredFiles.has(entry.name)) continue;
+
+      // Skip files with ignored extensions
+      if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (ignoredExtensions.has(ext)) continue;
+      }
 
       const fullPath = path.join(currentDir, entry.name);
 
@@ -457,7 +474,7 @@ export class SyncManager extends EventEmitter {
         });
       } else if (entry.isDirectory()) {
         const childRelDir = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
-        const childFiles = await this._collectFilesRecursive(baseDir, childRelDir, ignoredFiles);
+        const childFiles = await this._collectFilesRecursive(baseDir, childRelDir, ignoredFiles, ignoredExtensions);
         results.push(...childFiles);
       }
     }
