@@ -16,23 +16,38 @@ const RENDER_SOCKET_DIR = path.join(SYNTH_ROOT, 'kromosynth-render/render-socket
 const EVALUATE_DIR = path.join(SYNTH_ROOT, 'kromosynth-evaluate');
 const MODELS_PATH = path.join(EVALUATE_DIR, 'measurements/models');
 
-function renderFloatApp(name, port) {
+// Unified render server (src/server.js) — used for both browser preview and QD/VI rendering.
+// Uses worklet-offline by default (AudioWorklet signal feeding), matching browser live path.
+// Replaces the legacy socket-server-floating-points.js float servers.
+function renderServerApp(name, port) {
   return {
     name,
     cwd: RENDER_SOCKET_DIR,
-    script: 'node',
-    args: `--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port ${port}`,
+    script: NODE_BIN,
+    args: `--max-old-space-size=8192 --expose-gc src/server.js`,
     autorestart: true,
     max_restarts: 10,
     min_uptime: '10s',
     restart_delay: 1000,
     env: {
       NODE_ENV: 'production',
-      GENOMES_DB_PATH,
-      EVORUNS_SERVER_URL: 'http://127.0.0.1:4004'
+      PORT: port,
+      DB_PATH: GENOMES_DB_PATH,
     }
   };
 }
+
+// Kept for reference — retired in favour of renderServerApp (unified protocol).
+// function renderFloatApp(name, port) {
+//   return {
+//     name,
+//     cwd: RENDER_SOCKET_DIR,
+//     script: 'node',
+//     args: `--max-old-space-size=8192 --expose-gc socket-server-floating-points.js --port ${port}`,
+//     autorestart: true, max_restarts: 10, min_uptime: '10s', restart_delay: 1000,
+//     env: { NODE_ENV: 'production', GENOMES_DB_PATH, EVORUNS_SERVER_URL: 'http://127.0.0.1:4004' }
+//   };
+// }
 
 module.exports = {
   apps: [
@@ -45,15 +60,15 @@ module.exports = {
         NODE_ENV: 'production'
       }
     },
-    {
-      name: 'kromosynth-recommend',
-      cwd: path.join(SYNTH_ROOT, 'kromosynth-recommend'),
-      script: 'npm',
-      args: 'run start',
-      env: {
-        NODE_ENV: 'production'
-      }
-    },
+    // {
+    //   name: 'kromosynth-recommend',
+    //   cwd: path.join(SYNTH_ROOT, 'kromosynth-recommend'),
+    //   script: 'npm',
+    //   args: 'run start',
+    //   env: {
+    //     NODE_ENV: 'development',
+    //   }
+    // },
     {
       name: 'kromosynth-pocketbase',
       cwd: path.join(SYNTH_ROOT, 'kromosynth-auth'),
@@ -72,20 +87,15 @@ module.exports = {
         NODE_ENV: 'production'
       }
     },
-    {
-      name: 'kromosynth-render-preview',
-      cwd: RENDER_SOCKET_DIR,
-      script: NODE_BIN,
-      args: 'src/server.js',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3000
-      }
-    },
-    renderFloatApp('kromosynth-render-float-1', 3001),
-    renderFloatApp('kromosynth-render-float-2', 3006),
-    renderFloatApp('kromosynth-render-float-3', 3007),
-    renderFloatApp('kromosynth-render-float-4', 3005),
+    // ── Render servers (unified: browser preview + QD/VI batch rendering) ──────
+    // All instances run src/server.js with worklet-offline as default.
+    // Port 3000: browser preview (controlledResume streaming + batch mode)
+    // Ports 3001, 3005-3007: QD evaluation / VI rendering (batch mode)
+    renderServerApp('kromosynth-render-preview', 3000),
+    renderServerApp('kromosynth-render-1', 3001),
+    renderServerApp('kromosynth-render-2', 3005),
+    renderServerApp('kromosynth-render-3', 3006),
+    renderServerApp('kromosynth-render-4', 3007),
     {
       name: 'kromosynth-variation-breeding',
       cwd: path.join(SYNTH_ROOT, 'kromosynth-cli'),
