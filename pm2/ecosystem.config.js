@@ -57,7 +57,7 @@ module.exports = {
       script: 'npm',
       args: 'run start',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'development'
       }
     },
     // {
@@ -157,7 +157,9 @@ module.exports = {
       script: 'npm',
       args: 'run start',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        // Use dedicated batch render servers — not port 3000 (reserved for browser preview)
+        RENDER_INSTANCES: 'ws://127.0.0.1:3001,ws://127.0.0.1:3005,ws://127.0.0.1:3006,ws://127.0.0.1:3007'
       }
     },
     {
