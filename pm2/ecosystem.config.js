@@ -88,10 +88,18 @@ module.exports = {
       }
     },
     // ── Render servers (unified: browser preview + QD/VI batch rendering) ──────
-    // All instances run src/server.js with worklet-offline as default.
-    // Port 3000: browser preview (controlledResume streaming + batch mode)
-    // Ports 3001, 3005-3007: QD evaluation / VI rendering (batch mode)
-    renderServerApp('kromosynth-render-preview', 3000),
+    // All instances run src/server.js with the unified worklet-offline path.
+    // StreamingRenderer (controlledResume) path has been removed — it leaked
+    // memory (OfflineAudioContext nodes accumulated in node-web-audio-api).
+    // All requests now use renderWorkletOffline regardless of batch/controlledResume.
+    // Port 3000: browser preview + QD dev fallback
+    // Ports 3001, 3005-3007: QD evaluation / VI rendering
+    {
+      ...renderServerApp('kromosynth-render-preview', 3000),
+      // Safety net: restart if process exceeds 4 GB (shouldn't happen now that
+      // StreamingRenderer leak is removed, but guards against future regressions).
+      max_memory_restart: '4G',
+    },
     renderServerApp('kromosynth-render-1', 3001),
     renderServerApp('kromosynth-render-2', 3005),
     renderServerApp('kromosynth-render-3', 3006),
