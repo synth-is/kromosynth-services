@@ -34,6 +34,27 @@ function renderFloatApp(name, port) {
   };
 }
 
+// Streaming render server instances (src/server.js)
+// Each instance has its own AudioContext and can handle one render at a time.
+// Port 3000 is reserved for browser previews; 3008+ are for VI / batch tasks.
+const VI_RENDER_PORTS = [3008, 3009, 3010, 3011];
+function renderPreviewApp(name, port) {
+  return {
+    name,
+    cwd: RENDER_SOCKET_DIR,
+    script: NODE_BIN,
+    args: `src/server.js`,
+    autorestart: true,
+    max_restarts: 10,
+    min_uptime: '10s',
+    restart_delay: 1000,
+    env: {
+      NODE_ENV: 'production',
+      PORT: port
+    }
+  };
+}
+
 module.exports = {
   apps: [
     {
@@ -141,13 +162,17 @@ module.exports = {
         PYTORCH_ENABLE_MPS_FALLBACK: '1'
       }
     },
+    // VI render server instances — same streaming server as browser previews
+    // but on dedicated ports so VI batch jobs don't block browser preview rendering.
+    ...VI_RENDER_PORTS.map((port, i) => renderPreviewApp(`kromosynth-render-vi-${i + 1}`, port)),
     {
       name: 'kromosynth-vi',
       cwd: path.join(SYNTH_ROOT, 'kromosynth-vi'),
       script: 'npm',
       args: 'run start',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        RENDER_INSTANCES: VI_RENDER_PORTS.map(p => `ws://127.0.0.1:${p}`).join(',')
       }
     },
     {
