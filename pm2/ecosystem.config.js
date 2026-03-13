@@ -19,7 +19,7 @@ const MODELS_PATH = path.join(EVALUATE_DIR, 'measurements/models');
 // Unified render server (src/server.js) — used for both browser preview and QD/VI rendering.
 // Uses worklet-offline by default (AudioWorklet signal feeding), matching browser live path.
 // Replaces the legacy socket-server-floating-points.js float servers.
-function renderServerApp(name, port) {
+function renderServerApp(name, port, { useCompressor = false } = {}) {
   return {
     name,
     cwd: RENDER_SOCKET_DIR,
@@ -33,6 +33,7 @@ function renderServerApp(name, port) {
       NODE_ENV: 'production',
       PORT: port,
       DB_PATH: GENOMES_DB_PATH,
+      USE_COMPRESSOR: useCompressor ? 'true' : '',
     }
   };
 }
@@ -95,15 +96,15 @@ module.exports = {
     // Port 3000: browser preview + QD dev fallback
     // Ports 3001, 3005-3007: QD evaluation / VI rendering
     {
-      ...renderServerApp('kromosynth-render-preview', 3000),
+      ...renderServerApp('kromosynth-render-preview', 3000, { useCompressor: true }),
       // Safety net: restart if process exceeds 4 GB (shouldn't happen now that
       // StreamingRenderer leak is removed, but guards against future regressions).
       max_memory_restart: '4G',
     },
-    renderServerApp('kromosynth-render-1', 3001),
-    renderServerApp('kromosynth-render-2', 3005),
-    renderServerApp('kromosynth-render-3', 3006),
-    renderServerApp('kromosynth-render-4', 3007),
+    renderServerApp('kromosynth-render-1', 3001, { useCompressor: true }),
+    renderServerApp('kromosynth-render-2', 3005, { useCompressor: true }),
+    renderServerApp('kromosynth-render-3', 3006, { useCompressor: true }),
+    renderServerApp('kromosynth-render-4', 3007, { useCompressor: true }),
     {
       name: 'kromosynth-variation-breeding',
       cwd: path.join(SYNTH_ROOT, 'kromosynth-cli'),
