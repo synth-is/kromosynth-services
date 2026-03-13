@@ -161,18 +161,20 @@ cd "$SYNTH_ROOT"
 cat > "$SYNTH_ROOT/umami/.env" << 'EOF'
 DATABASE_URL=file:./umami.db
 APP_SECRET=<generate-a-random-string>
-PORT=3100
+PORT=7894
 DISABLE_TELEMETRY=1
 CLIENT_IP_HEADER=X-Forwarded-For
 EOF
 
 # 3. Initialize database
 cd "$SYNTH_ROOT/umami"
-npx prisma migrate deploy
+pnpm install
+pnpm run build 
+pnpm run start 
 
 # 4. Start Umami (PM2 will handle this, but for first-time setup)
-npm start
-# Visit http://localhost:3100 — default login: admin / umami
+pnpm run start --port 7894
+# Visit http://localhost:7894 — default login: admin / umami
 
 # 5. Create a website in Umami admin panel
 # Go to Settings → Websites → Add website

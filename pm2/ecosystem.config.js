@@ -151,6 +151,9 @@ module.exports = {
         PYTORCH_ENABLE_MPS_FALLBACK: '1'
       }
     },
+    // VI render server instances — same streaming server as browser previews
+    // but on dedicated ports so VI batch jobs don't block browser preview rendering.
+    ...VI_RENDER_PORTS.map((port, i) => renderPreviewApp(`kromosynth-render-vi-${i + 1}`, port)),
     {
       name: 'kromosynth-vi',
       cwd: path.join(SYNTH_ROOT, 'kromosynth-vi'),
